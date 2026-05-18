@@ -10,5 +10,8 @@ module TopologicalSkeleton
     using CairoMakie
 
     include("decoder.jl")
+    include("abstracttopology.jl")
+    include("interpolatedtopology.jl")
+    include("plot.jl")
 
 end
