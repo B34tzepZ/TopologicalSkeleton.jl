@@ -36,6 +36,11 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
+      - name: Add registry
+        run: julia -e '
+          using Pkg
+          Pkg.Registry.add(url="https://visual2.cs.ovgu.de/roessl/VCJuliaRegistry")
+          Pkg.Registry.update()'
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
