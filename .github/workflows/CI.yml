@@ -37,5 +37,12 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v2
+      - name: Setup custom registry
+        run: |
+          julia -e '
+            using Pkg
+            Pkg.Registry.add(Pkg.RegistrySpec(url="https://visual2.cs.ovgu.de/roessl/VCJuliaRegistry"))
+            Pkg.Registry.update()
+          '
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
