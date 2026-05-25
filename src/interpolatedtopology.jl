@@ -60,18 +60,10 @@ function _classify_eigenvalues(λ; tol=1e-10)
     end
 end
 
-_tangent_from_normal(n::SVector{2,T}) where {T} = SVector{2,T}(-n[2], n[1])
-
-function _signed_normal_component(flow::VCFlowData.InterpolatedFlow, x, normal)
-    v = _flow_value(flow, x)
-    return dot(v, normal)
-end
-
 """
-    jacobian(flow, t, x)
+    jacobian(flow, x)
 
-Jacobian matrix of the vector field at `(t, x)`.
-For stationary flows, `t` is ignored.
+Jacobian matrix of the vector field at x.
 """
 function jacobian(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}; h::T = sqrt(eps(T))) where {T}
     J = zeros(T, 2, 2)
@@ -191,15 +183,6 @@ function boundary_behavior(flow::VCFlowData.InterpolatedFlow, x, normal; tol=1e-
     return :tangent
 end
 
-function boundary_behavior(flow::VCFlowData.InterpolatedFlow, t, x, normal; tol=1e-10)
-    v = _flow_value(flow, x)
-    s = dot(v, normal)
-
-    s < -tol && return :inflow
-    s >  tol && return :outflow
-    return :tangent
-end
-
 """
     boundary_segments(flow; m=200)
 
@@ -260,10 +243,10 @@ function boundary_switch_points(flow::VCFlowData.InterpolatedFlow; tol=1e-10)
     pts = BoundarySwitchPoint{Float64,2}[]
 
     for (params, mkpt, normal) in edges
-        tangent = _tangent_from_normal(normal)
+        tangent = SVector{2,T}(-normal[2], normal[1])
 
         xs = [mkpt(p) for p in params]
-        svals = [_signed_normal_component(flow, x, normal) for x in xs]
+        svals = [dot(_flow_value(flow, x), normal) for x in xs]
 
         for i in 1:(length(xs)-1)
             x0 = xs[i]
