@@ -242,7 +242,7 @@ end
 
 Find boundary switch points by detecting sign changes of v·n along each edge.
 """
-function boundary_switch_points(flow::VCFlowData.InterpolatedFlow; tol=1e-10, patch::Bool=false, ϵ=nothing)
+function boundary_switch_points(flow::VCFlowData.InterpolatedFlow; tol=1e-10, patch::Bool=false)
     itp = flow.itp
     xsamples = length(axes(itp, 1))
     ysamples = length(axes(itp, 2))
@@ -250,30 +250,28 @@ function boundary_switch_points(flow::VCFlowData.InterpolatedFlow; tol=1e-10, pa
     xmin, ymin, xmax, ymax = _spatial_bounds(flow)
     T = Float64
 
-    if ϵ === nothing
-        hx = (xmax - xmin) / (xsamples - 1)
-        hy = (ymax - ymin) / (ysamples - 1)
-        ϵ = min(hx, hy)
-    end
-
     pts = BoundarySwitchPoint{Float64,2}[]
 
     if !patch
         edges = (
-            (_linspace(ymin, ymax, ysamples), y -> SVector{2,T}(xmin, y), SVector{2,T}(-1, 0)),
-            (_linspace(ymin, ymax, ysamples), y -> SVector{2,T}(xmax, y), SVector{2,T}( 1, 0)),
-            (_linspace(xmin, xmax, xsamples), x -> SVector{2,T}(x, ymin), SVector{2,T}( 0,-1)),
-            (_linspace(xmin, xmax, xsamples), x -> SVector{2,T}(x, ymax), SVector{2,T}( 0, 1)),
+            (_linspace(ymin, ymax, ysamples), y -> SVector{2,T}(xmin, y), SVector{2,T}(-1, 0)), # left
+            (_linspace(ymin, ymax, ysamples), y -> SVector{2,T}(xmax, y), SVector{2,T}( 1, 0)), # right
+            (_linspace(xmin, xmax, xsamples), x -> SVector{2,T}(x, ymin), SVector{2,T}( 0,-1)), # bottom
+            (_linspace(xmin, xmax, xsamples), x -> SVector{2,T}(x, ymax), SVector{2,T}( 0, 1)), # top
         )
 
         for (params, mkpt, normal) in edges
             tangent = _tangent_from_normal(normal)
+
             xs = [mkpt(p) for p in params]
             svals = [_signed_normal_component(flow, x, normal) for x in xs]
 
             for i in 1:(length(xs)-1)
-                x0, x1 = xs[i], xs[i+1]
-                s0, s1 = svals[i], svals[i+1]
+                x0 = xs[i]
+                x1 = xs[i+1]
+
+                s0 = svals[i]
+                s1 = svals[i+1]
 
                 if abs(s0) < tol
                     push!(pts, BoundarySwitchPoint(x0, normal, tangent))
@@ -294,21 +292,28 @@ function boundary_switch_points(flow::VCFlowData.InterpolatedFlow; tol=1e-10, pa
             end
         end
     else
-        # patched no-slip/slip case:
-        # top and bottom boundary were modified, so evaluate an offset curve
-        # slightly inside the domain and project the vector field onto its tangent.
+        # Patch case:
+        # The outer top/bottom layers have modified normal components.
+        # Therefore use the first inner sample line and project the flow
+        # onto the boundary tangent.
+        xparams = _linspace(xmin, xmax, xsamples)
+        yparams = _linspace(ymin, ymax, ysamples)
+
+        y_bottom_inner = yparams[2]
+        y_top_inner = yparams[end - 1]
+
         edges = (
             (
-                _linspace(xmin, xmax, xsamples),
-                x -> SVector{2,T}(x, ymin + ϵ),  # offset curve
-                x -> SVector{2,T}(x, ymin),      # projected BSP on boundary
-                SVector{2,T}(0, -1)              # bottom normal
+                xparams,
+                x -> SVector{2,T}(x, y_bottom_inner), # offset sample line
+                x -> SVector{2,T}(x, ymin),           # projected boundary point
+                SVector{2,T}(0, -1)                   # bottom normal
             ),
             (
-                _linspace(xmin, xmax, xsamples),
-                x -> SVector{2,T}(x, ymax - ϵ),  # offset curve
-                x -> SVector{2,T}(x, ymax),      # projected BSP on boundary
-                SVector{2,T}(0, 1)               # top normal
+                xparams,
+                x -> SVector{2,T}(x, y_top_inner),    # offset sample line
+                x -> SVector{2,T}(x, ymax),           # projected boundary point
+                SVector{2,T}(0, 1)                    # top normal
             ),
         )
 
@@ -318,27 +323,30 @@ function boundary_switch_points(flow::VCFlowData.InterpolatedFlow; tol=1e-10, pa
             xs_offset = [offset_mkpt(p) for p in params]
             xs_boundary = [boundary_mkpt(p) for p in params]
 
-            # 1D vector field on the offset curve: tangent component
+            # 1D vector field along the offset curve
             svals = [dot(_flow_value(flow, x), tangent) for x in xs_offset]
 
             for i in 1:(length(xs_offset)-1)
-                x0b, x1b = xs_boundary[i], xs_boundary[i+1]
-                s0, s1 = svals[i], svals[i+1]
+                x0 = xs_boundary[i]
+                x1 = xs_boundary[i+1]
+
+                s0 = svals[i]
+                s1 = svals[i+1]
 
                 if abs(s0) < tol
-                    push!(pts, BoundarySwitchPoint(x0b, normal, tangent))
+                    push!(pts, BoundarySwitchPoint(x0, normal, tangent))
                     continue
                 end
 
                 if abs(s1) < tol
-                    push!(pts, BoundarySwitchPoint(x1b, normal, tangent))
+                    push!(pts, BoundarySwitchPoint(x1, normal, tangent))
                     continue
                 end
 
                 sign(s0) == sign(s1) && continue
 
                 α = clamp(s0 / (s0 - s1), 0.0, 1.0)
-                xsw = (1 - α) * x0b + α * x1b
+                xsw = (1 - α) * x0 + α * x1
 
                 push!(pts, BoundarySwitchPoint(xsw, normal, tangent))
             end
