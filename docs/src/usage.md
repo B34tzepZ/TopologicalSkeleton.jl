@@ -1,4 +1,4 @@
-# TopologicalSkeleton
+# Usage
 
 Load a flow via formula
 ```
