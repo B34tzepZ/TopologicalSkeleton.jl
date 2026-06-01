@@ -218,3 +218,5 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow)
 
     return fig
 end
+
+export plot_topology, plot_skeleton
