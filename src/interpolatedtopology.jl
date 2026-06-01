@@ -135,23 +135,22 @@ function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8, maxiter::I
             end
 
             J = jacobian(flow, x; h=sqrt(eps(Float64)))
-            cond(J) > 1e12 && (ok = false; break)
+            cond(J) > 1e12 && (ok = false; break) # Fehleranfälligkeit Jakobi Matrix gegenüber Interpolation
 
             Δ = J \ f
-
-            a = 1.0
-            while !_inside(flow, x - a * Δ) || norm(_flow_value(flow, x - a * Δ)) > norm(f)
-                a *= 0.5
-                a < 1e-6 && (ok = false; break)
-            end            
             
-            x = x - a * Δ
+            !all(isfinite, Δ) && (ok = false; break) # Newton numerisch gültig
+            
+            xnew = x - Δ
 
-            _inside(flow, x) || (ok = false; break)
+            norm(Δ) ≤ max(tol, tol * norm(xnew)) && (x = xnew; break) # kleiner Newton Schritt
+            _inside(flow, xnew) || (ok = false; break) # Newton innerhalb des Definitionsbereichs
+
+            x = xnew
         end
 
         ok || continue
-        norm(_flow_value(flow, x)) < tol || continue
+        norm(_flow_value(flow, x)) < tol || continue # Extrempunkt erreicht
 
         duplicate = any(cp -> norm(cp.x - x) < 1e-5, cps)
         duplicate && continue
@@ -538,3 +537,4 @@ function integration_direction(cp::CriticalPoint)
     return :forward
 end
 
+export critical_points, critical_type, boundary_segments, boundary_switch_points, separatrix_seeds

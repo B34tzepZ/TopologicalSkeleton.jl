@@ -1,6 +1,12 @@
 using StaticArrays
 
-abstract type FlowFeature end
+abstract type  AbstractTopology <: VCFlowData.AbstractFlow end
+
+_impl(topo::AbstractTopology) = _impl(parent(topo))
+
+Base.parent(topo::AbstractTopology) = error(
+    "Base.parent not implemented for $(typeof(topo))"
+)
 
 abstract type CriticalPointType end
 struct Source   <: CriticalPointType end
@@ -10,18 +16,18 @@ struct Center   <: CriticalPointType end
 struct SpiralSource <: CriticalPointType end
 struct SpiralSink   <: CriticalPointType end
 
-struct CriticalPoint{T,N} <: FlowFeature
+struct CriticalPoint{T,N} <: AbstractTopology
     x::SVector{N,T}
     kind::CriticalPointType
 end
 
-struct BoundarySegment{T,N} <: FlowFeature
+struct BoundarySegment{T,N} <: AbstractTopology
     p0::SVector{N,T}
     p1::SVector{N,T}
     normal::SVector{N,T}
 end
 
-struct BoundarySwitchPoint{T,N} <: FlowFeature
+struct BoundarySwitchPoint{T,N} <: AbstractTopology
     x::SVector{N,T}
     normal::SVector{N,T}
     tangent::SVector{N,T}
