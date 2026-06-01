@@ -67,7 +67,7 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
 
     for seg in segs
         mid = 0.5 * (seg.p0 + seg.p1)
-        beh = boundary_behavior(flow, 0.0, mid, seg.normal)
+        beh = boundary_behavior(flow, mid, seg.normal)
 
         color =
             beh == :inflow  ? :purple :
