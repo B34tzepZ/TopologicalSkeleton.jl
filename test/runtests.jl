@@ -1,14 +1,17 @@
 using TopologicalSkeleton
 using Test
 using StaticArrays
+using Interpolations
+using NCDatasets
+using VCDataSets
 
 include(joinpath(@__DIR__, "..", "src", "abstracttopology.jl"))
 include(joinpath(@__DIR__, "..", "src", "interpolatedtopology.jl"))
-include(joinpath(@__DIR__, "..", "src", "flows", "simpleflow.jl"))
 include(joinpath(@__DIR__, "..", "src", "decoder.jl"))
 
-# Testflow 
-flow = simpleflow()
+formula(x, y) = @SVector [x^3 - x, (x - 0.5) * y]
+xmin, xmax, ymin, ymax = -2.0, 2.0, -2.0, 2.0
+flow = loadflow(formula, xmin, xmax, ymin, ymax, 401, 401, false)
 
 @testset "Topology: Critical Points" begin
 
