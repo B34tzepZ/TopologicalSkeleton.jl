@@ -1,0 +1,49 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+          show-versioninfo: true
+
+      - name: Cache Julia depot
+        uses: julia-actions/cache@v2
+
+      - name: Add registries and instantiate
+        run: |
+          julia --project=. -e '
+            using Pkg;
+            Pkg.Registry.add("General");
+            Pkg.Registry.add(Pkg.RegistrySpec(url="https://visual2.cs.ovgu.de/roessl/VCJuliaRegistry"));
+            Pkg.add(url="https://github.com/vchuravy/TaskLocalValues.jl");
+            Pkg.instantiate();
+          '
+
+      - name: Build packages
+        run: |
+          julia --project=. -e '
+            using Pkg;
+            Pkg.build();
+          '
+
+      - name: Run tests
+        run: julia --project=. test/runtests.jl
