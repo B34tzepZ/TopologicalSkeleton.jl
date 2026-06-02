@@ -55,6 +55,18 @@ jobs:
             Pkg.add("Coverage");
           '        
 
+      - name: Generate LCOV report
+        run: |
+          julia --project=. -e '
+            using Coverage;
+
+            cov = process_folder("src");
+            LCOV.writefile("lcov.info", cov);
+          '
+
+      - name: Check coverage file
+        run: ls -lah lcov.info
+
       - name: Generate coverage summary
         run: |
           julia --project=. -e '
@@ -68,3 +80,5 @@ jobs:
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
