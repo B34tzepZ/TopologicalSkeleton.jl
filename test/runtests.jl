@@ -81,6 +81,42 @@ end
     end
 end
 
+@testset "Topology: Bilinear Critical Point" begin
+    # Piecewise bilinear vector field on one cell
+    #
+    # v00 = ( 3/4,  3/4)
+    # v01 = (-1/4, -9/4)
+    # v10 = (-9/4, -1/4)
+    # v11 = ( 3/4,  3/4)
+
+    V = Array{SVector{2,Float64}}(undef, 2, 2)
+
+    V[1, 1] = SVector( 3/4,  3/4)   # v00
+    V[1, 2] = SVector(-1/4, -9/4)   # v01
+    V[2, 1] = SVector(-9/4, -1/4)   # v10
+    V[2, 2] = SVector( 3/4,  3/4)   # v11
+
+    flow = loadflow(V, 0.0, 1.0, 0.0, 1.0, false)
+
+    cps = critical_points(flow)
+
+    @test length(cps) == 2
+
+    # Expected critical points
+    @test any(cp -> norm(cp.x - SVector(0.25, 0.25)) < 1e-8, cps)
+    @test any(cp -> norm(cp.x - SVector(0.75, 0.75)) < 1e-8, cps)
+
+    for cp in cps
+        if norm(cp.x - SVector(0.25, 0.25)) < 1e-8
+            @test cp.kind isa Sink
+        elseif norm(cp.x - SVector(0.75, 0.75)) < 1e-8
+            @test cp.kind isa Saddle
+        else
+            @test false
+        end
+    end
+end
+
 @testset "Topology: Boundary Behavior" begin
     xmin_, ymin_, xmax_, ymax_ = _spatial_bounds(flow)
 
