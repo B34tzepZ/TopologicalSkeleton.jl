@@ -45,5 +45,26 @@ jobs:
             Pkg.build();
           '
 
-      - name: Run tests
-        run: julia --project=. test/runtests.jl
+      - name: Run tests with coverage
+        run: julia --project=. --code-coverage=user test/runtests.jl
+
+      - name: Install coverage tools
+        run: |
+          julia --project=. -e '
+            using Pkg;
+            Pkg.add("Coverage");
+          '        
+
+      - name: Generate coverage summary
+        run: |
+          julia --project=. -e '
+            using Coverage;
+
+            coverage = process_folder("src");
+            covered = get_summary(coverage);
+
+            println("Coverage: ", covered);
+          '
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
