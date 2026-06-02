@@ -5,4 +5,4 @@
 - Load 2D flows from [VCDataSets](https://pages.vc.cs.ovgu.de/vcdatasets.jl/) or via Array/Formula
 - Get location and type of critical points
 - Get boundary switch points, optionally with respect to no-slip condition
-- plot topological skeleton based of critical points, boundary switch points and separatrices
+- Plot topological skeleton based of critical points, boundary switch points and separatrices
