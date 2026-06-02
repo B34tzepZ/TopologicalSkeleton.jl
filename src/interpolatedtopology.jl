@@ -82,23 +82,82 @@ function jacobian(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}; h::T = sqr
 end
 
 """
-    critical_points(flow; nx=40, ny=40, tol=1e-8, maxiter=25)
+    critical_points(flow; tol=1e-8)
 
-Find critical points by:
-1. scanning a coarse grid for candidate cells,
-2. refining with Newton iterations,
-3. classifying by eigenvalues of the Jacobian.
+Find critical points of a 2D bilinearly interpolated vector field by:
+
+1. constructing the bilinear interpolation inside every grid cell,
+2. solving the resulting bilinear system analytically,
+3. locating all interior zeros of the vector field,
+4. classifying them using the eigenvalues of the local Jacobian.
+
+This approach guarantees that critical points inside a cell are found even if
+they are not located near the cell center and therefore avoids the sampling
+artifacts of coarse-grid candidate searches.
 """
-function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8, maxiter::Int=25)
+function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8)
     itp = flow.itp
     xmin, ymin, xmax, ymax = _spatial_bounds(flow)
 
     xs = collect(range(xmin, xmax; length=length(axes(itp, 1))))
     ys = collect(range(ymin, ymax; length=length(axes(itp, 2))))
 
-    candidates = SVector{2,Float64}[]
+    candidates = Tuple{SVector{2,Float64}, SMatrix{2,2,Float64,4}}[]
 
-    # coarse scan: sign change in both components inside a cell
+    function quadratic_roots(a, b, c; qtol=1e-12)
+        roots = Float64[]
+
+        if abs(a) < qtol
+            abs(b) < qtol && return roots
+            push!(roots, -c / b)
+            return roots
+        end
+
+        Δ = b^2 - 4a*c
+
+        Δ < -qtol && return roots
+        Δ = max(Δ, 0.0)
+
+        push!(roots, (-b + sqrt(Δ)) / (2a))
+        push!(roots, (-b - sqrt(Δ)) / (2a))
+
+        return roots
+    end
+
+    function try_add_root!(ξ, η, x0, x1, y0, y1, a, b; local_tol=1e-9)
+        if -local_tol <= ξ <= 1 + local_tol &&
+           -local_tol <= η <= 1 + local_tol
+
+            ξ = clamp(ξ, 0.0, 1.0)
+            η = clamp(η, 0.0, 1.0)
+
+            u = a[1] + a[2]*ξ + a[3]*η + a[4]*ξ*η
+            v = b[1] + b[2]*ξ + b[3]*η + b[4]*ξ*η
+
+            norm(SVector(u, v)) < max(1e-7, 10tol) || return
+
+            x = x0 + ξ * (x1 - x0)
+            y = y0 + η * (y1 - y0)
+            p = SVector{2,Float64}(x, y)
+
+            hx = x1 - x0
+            hy = y1 - y0
+
+            du_dξ = a[2] + a[4]*η
+            du_dη = a[3] + a[4]*ξ
+            dv_dξ = b[2] + b[4]*η
+            dv_dη = b[3] + b[4]*ξ
+
+            J = @SMatrix [
+                du_dξ / hx  du_dη / hy
+                dv_dξ / hx  dv_dη / hy
+            ]
+
+            duplicate = any(c -> norm(c[1] - p) < 1e-6, candidates)
+            duplicate || push!(candidates, (p, J))
+        end
+    end
+
     for i in 1:(length(xs)-1), j in 1:(length(ys)-1)
         x0, x1 = xs[i], xs[i+1]
         y0, y1 = ys[j], ys[j+1]
@@ -108,54 +167,57 @@ function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8, maxiter::I
         v01 = itp(x0, y1)
         v11 = itp(x1, y1)
 
-        us = (v00[1], v10[1], v01[1], v11[1])
-        vs = (v00[2], v10[2], v01[2], v11[2])
+        # u(ξ,η) = a1 + a2*ξ + a3*η + a4*ξ*η
+        a = (
+            v00[1],
+            v10[1] - v00[1],
+            v01[1] - v00[1],
+            v11[1] - v10[1] - v01[1] + v00[1]
+        )
 
-        if (minimum(us) <= 0 <= maximum(us)) &&
-           (minimum(vs) <= 0 <= maximum(vs))
+        # v(ξ,η) = b1 + b2*ξ + b3*η + b4*ξ*η
+        b = (
+            v00[2],
+            v10[2] - v00[2],
+            v01[2] - v00[2],
+            v11[2] - v10[2] - v01[2] + v00[2]
+        )
 
-            xm = (x0 + x1) / 2
-            ym = (y0 + y1) / 2
+        # Eliminate η:
+        # η = -(a1 + a2*ξ) / (a3 + a4*ξ)
+        q2 = b[2]*a[4] - b[4]*a[2]
+        q1 = b[1]*a[4] + b[2]*a[3] - b[3]*a[2] - b[4]*a[1]
+        q0 = b[1]*a[3] - b[3]*a[1]
 
-            push!(candidates, SVector(xm, ym))
+        for ξ in quadratic_roots(q2, q1, q0)
+            denom = a[3] + a[4]*ξ
+            abs(denom) < 1e-12 && continue
+
+            η = -(a[1] + a[2]*ξ) / denom
+            try_add_root!(ξ, η, x0, x1, y0, y1, a, b)
+        end
+
+        # Fallback: eliminate ξ instead.
+        # Needed when a3 + a4*ξ is close to zero.
+        r2 = b[3]*a[4] - b[4]*a[3]
+        r1 = b[1]*a[4] + b[3]*a[2] - b[2]*a[3] - b[4]*a[1]
+        r0 = b[1]*a[2] - b[2]*a[1]
+
+        for η in quadratic_roots(r2, r1, r0)
+            denom = a[2] + a[4]*η
+            abs(denom) < 1e-12 && continue
+
+            ξ = -(a[1] + a[3]*η) / denom
+            try_add_root!(ξ, η, x0, x1, y0, y1, a, b)
         end
     end
 
     cps = CriticalPoint{Float64,2}[]
 
-    for xstart in candidates
-        x = xstart
-        ok = true
-
-        for _ in 1:maxiter
-            f = _flow_value(flow, x)
-
-            if norm(f) < tol
-                break
-            end
-
-            J = jacobian(flow, x; h=sqrt(eps(Float64)))
-            cond(J) > 1e12 && (ok = false; break) # Fehleranfälligkeit Jakobi Matrix gegenüber Interpolation
-
-            Δ = J \ f
-            
-            !all(isfinite, Δ) && (ok = false; break) # Newton numerisch gültig
-            
-            xnew = x - Δ
-
-            norm(Δ) ≤ max(tol, tol * norm(xnew)) && (x = xnew; break) # kleiner Newton Schritt
-            _inside(flow, xnew) || (ok = false; break) # Newton innerhalb des Definitionsbereichs
-
-            x = xnew
-        end
-
-        ok || continue
-        norm(_flow_value(flow, x)) < tol || continue # Extrempunkt erreicht
-
+    for (x, J) in candidates
         duplicate = any(cp -> norm(cp.x - x) < 1e-5, cps)
         duplicate && continue
 
-        J = jacobian(flow, x; h=sqrt(eps(Float64)))
         λ = eigvals(Matrix(J))
         kind = _classify_eigenvalues(λ)
 
