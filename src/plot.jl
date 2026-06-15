@@ -9,6 +9,12 @@ Visualize:
 """
 function plot_topology(flow::VCFlowData.InterpolatedFlow;
     resolution::Int=41,
+    zero_cell_tol=1e-10,
+    duplicate_tol=1e-3,
+    ignore_masked_cells=true,
+    ignore_boundary_points=true,
+    min_mask_boundary_distance_cells::Real=0,
+    patch_boundary=false
 )
     xmin, ymin, xmax, ymax = _spatial_bounds(flow)
 
@@ -43,7 +49,13 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
 
     arrows2d!(ax, pts, vecs; lengthscale=0.08, alpha=0.5)
 
-    cps = critical_points(flow)
+    cps = critical_points(flow;
+        zero_cell_tol=zero_cell_tol,
+        duplicate_tol=duplicate_tol,
+        ignore_masked_cells=ignore_masked_cells,
+        ignore_boundary_points=ignore_boundary_points,
+        min_mask_boundary_distance_cells=min_mask_boundary_distance_cells
+    )
 
     for cp in cps
         p = Point2f(cp.x[1], cp.x[2])
@@ -77,7 +89,11 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
         lines!(ax, [seg.p0[1], seg.p1[1]], [seg.p0[2], seg.p1[2]]; color=color, linewidth=3)
     end
 
-    bsps = boundary_switch_points(flow)
+    bsps = boundary_switch_points(flow;
+    patch=patch_boundary,
+    include_mask_boundary=true,
+    zero_cell_tol=zero_cell_tol
+)
 
     for bsp in bsps
         scatter!(ax, [Point2f(bsp.x[1], bsp.x[2])]; markersize=14, color=:lightgray)
@@ -102,7 +118,14 @@ Plot the topological skeleton:
 - boundary switch points
 - separatrices between them
 """
-function plot_skeleton(flow::VCFlowData.InterpolatedFlow)
+function plot_skeleton(flow::VCFlowData.InterpolatedFlow;
+    zero_cell_tol=1e-10,
+    duplicate_tol=1e-3,
+    ignore_masked_cells=true,
+    ignore_boundary_points=true,
+    min_mask_boundary_distance_cells::Real=0,
+    patch_boundary=false
+)
     xmin, ymin, xmax, ymax = _spatial_bounds(flow)
 
     fig = Figure(size=(1000, 700))
@@ -122,8 +145,19 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow)
     h_sp_sink = scatter!(ax, [Point2f(0,0)]; color=:purple, markersize=18, visible=false)
 
 
-    cps = critical_points(flow)
-    bsps = boundary_switch_points(flow)
+    cps = critical_points(flow;
+        zero_cell_tol=zero_cell_tol,
+        duplicate_tol=duplicate_tol,
+        ignore_masked_cells=ignore_masked_cells,
+        ignore_boundary_points=ignore_boundary_points,
+        min_mask_boundary_distance_cells=min_mask_boundary_distance_cells
+    )
+
+    bsps = boundary_switch_points(flow;
+    patch=patch_boundary,
+    include_mask_boundary=true,
+    zero_cell_tol=zero_cell_tol
+)
 
     # boundary box 
     lines!(ax,
@@ -136,6 +170,8 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow)
     # separatrices from saddles 
     for cp in cps
         if cp.kind isa Saddle
+            println("Tracing saddle at ", cp.x)
+
             for (x0, dir) in separatrix_seeds(flow, cp; ϵ=5e-3)
                 pts = trace_separatrix(flow, x0;
                     dir=dir,
@@ -143,6 +179,9 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow)
                     stop_eps=5e-3,
                     minsteps_before_stop=10
                 )
+
+                println("  seed=", x0, " dir=", dir, " points=", length(pts))
+
                 if length(pts) >= 2
                     lines!(ax, first.(pts), last.(pts); color=:black, linewidth=2)
                 end
@@ -159,11 +198,21 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow)
                 stop_eps=5e-3,
                 minsteps_before_stop=10
             )
+
+            println("BSP seed=", x0, " dir=", dir, " points=", length(pts))
+
             if length(pts) >= 2
                 lines!(ax, first.(pts), last.(pts); color=:black, linewidth=2)
             end
         end
     end
+
+    println("Critical points:")
+    for cp in cps
+        println(cp.x, "  ", typeof(cp.kind))
+    end
+
+println("Boundary switch points: ", length(bsps))
 
     # critical points
     for cp in cps
