@@ -127,7 +127,15 @@ function critical_points(flow::VCFlowData.InterpolatedFlow;
 
     hx_min = minimum(diff(xs))
     hy_min = minimum(diff(ys))
-    boundary_tol = 0.5 * min(hx_min, hy_min)
+    domain_scale = max(
+        abs(Float64(xmin)),
+        abs(Float64(xmax)),
+        abs(Float64(ymin)),
+        abs(Float64(ymax)),
+        1.0
+    )
+
+    boundary_tol = max(10 * tol, 100 * eps(Float64) * domain_scale)
 
     mask_boundary_filter_tol =
     min_mask_boundary_distance_cells * max(hx_min, hy_min)
