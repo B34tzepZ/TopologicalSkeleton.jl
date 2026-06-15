@@ -117,7 +117,7 @@ function critical_points(flow::VCFlowData.InterpolatedFlow;
     duplicate_tol=1e-4,
     ignore_masked_cells::Bool=true,
     ignore_boundary_points::Bool=true,
-    min_mask_boundary_distance_cells::Real=0
+    min_mask_boundary_distance_cells::Real=0,
 )
     itp = flow.itp
     xmin, ymin, xmax, ymax = _spatial_bounds(flow)
