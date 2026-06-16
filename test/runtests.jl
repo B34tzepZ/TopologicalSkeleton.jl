@@ -81,6 +81,88 @@ end
     end
 end
 
+@testset "Topology: Adjacency Matrix for Polynomial Flow" begin
+    adj_formula(x, y) = @SVector [x^3 - x, (x - 0.5) * y]
+    adj_flow = loadflow(adj_formula, -2.0, 2.0, -2.0, 2.0, 401, 401, false)
+
+    cps = critical_points(adj_flow;
+        ignore_masked_cells=false,
+        ignore_boundary_points=false,
+        duplicate_tol=1e-10
+    )
+
+    bsps = boundary_switch_points(adj_flow;
+        patch=false,
+        include_mask_boundary=false
+    )
+
+    @test length(cps) == 3
+    @test length(bsps) == 2
+
+    saddle_idx = findfirst(cp -> cp.kind isa Saddle && norm(cp.x - SVector(-1.0, 0.0)) < 1e-2, cps)
+    sink_idx   = findfirst(cp -> cp.kind isa Sink   && norm(cp.x - SVector( 0.0, 0.0)) < 1e-2, cps)
+    source_idx = findfirst(cp -> cp.kind isa Source && norm(cp.x - SVector( 1.0, 0.0)) < 1e-2, cps)
+
+    top_bsp_idx = findfirst(bsp -> norm(bsp.x - SVector(0.5,  2.0)) < 1e-2, bsps)
+    bot_bsp_idx = findfirst(bsp -> norm(bsp.x - SVector(0.5, -2.0)) < 1e-2, bsps)
+
+    @test saddle_idx !== nothing
+    @test sink_idx !== nothing
+    @test source_idx !== nothing
+    @test top_bsp_idx !== nothing
+    @test bot_bsp_idx !== nothing
+
+    # Fixed node order for this test:
+    # 1 = saddle at (-1, 0)
+    # 2 = sink at (0, 0)
+    # 3 = source at (1, 0)
+    # 4 = top boundary switch point at (0.5, 2)
+    # 5 = bottom boundary switch point at (0.5, -2)
+
+    function build_adjacency_matrix(n::Integer, edges; directed::Bool=false)
+        A = falses(n, n)
+
+        for (i, j) in edges
+            if i < 1 || i > n || j < 1 || j > n
+                throw(ArgumentError("edge ($i, $j) is outside valid node range 1:$n"))
+            end
+
+            A[i, j] = true
+
+            if !directed
+                A[j, i] = true
+            end
+        end
+
+        return A
+    end
+
+    edges = [
+        (1, 2), # saddle -- sink
+        (2, 3), # sink -- source
+        (3, 4), # source -- top BSP
+        (3, 5), # source -- bottom BSP
+    ]
+
+    A = build_adjacency_matrix(5, edges; directed=false)
+
+    expected = [
+        false  true   false  false  false;
+        true   false  true   false  false;
+        false  true   false  true   true;
+        false  false  true   false  false;
+        false  false  true   false  false;
+    ]
+
+    @test A == expected
+    @test size(A) == (5, 5)
+    @test eltype(A) == Bool
+    @test issymmetric(A)
+
+    @test_throws ArgumentError build_adjacency_matrix(5, [(1, 6)]; directed=false)
+    @test_throws ArgumentError build_adjacency_matrix(5, [(0, 2)]; directed=false)
+end
+
 @testset "Topology: Bilinear Critical Point" begin
     # Piecewise bilinear vector field on one cell
     #
