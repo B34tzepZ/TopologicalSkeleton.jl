@@ -26,22 +26,22 @@ function loadflow(flow::Function, xmin::Float64, xmax::Float64, ymin::Float64, y
 end
 
 # flow, domain, resolution
-function loadflow(flow::Function, xmin::Float64, xmax::Float64, ymin::Float64, ymax::Float64, nx::Int, ny::Int; patch::Bool = true)
+function loadflow(flow::Function, xmin::Float64, xmax::Float64, ymin::Float64, ymax::Float64, nx::Int, ny::Int; patch::Bool = false)
     return loadflow(flow, xmin, xmax, ymin, ymax, nx, ny, patch)
 end
 
 # flow, domain
-function loadflow(flow::Function, xmin::Float64, xmax::Float64, ymin::Float64, ymax::Float64; nx::Int = Int((xmax - xmin) * 100) + 1, ny::Int = Int((ymax - ymin) * 100) + 1, patch::Bool = true)
+function loadflow(flow::Function, xmin::Float64, xmax::Float64, ymin::Float64, ymax::Float64; nx::Int = Int((xmax - xmin) * 100) + 1, ny::Int = Int((ymax - ymin) * 100) + 1, patch::Bool = false)
     return loadflow(flow, xmin, xmax, ymin, ymax, nx, ny, patch)
 end
 
 # flow, resolution
-function loadflow(flow::Function, nx::Int, ny::Int; xmin::Float64 = -10.0, xmax::Float64 = 10.0, ymin::Float64 = -10.0, ymax::Float64 = 10.0, patch::Bool = true)
+function loadflow(flow::Function, nx::Int, ny::Int; xmin::Float64 = -10.0, xmax::Float64 = 10.0, ymin::Float64 = -10.0, ymax::Float64 = 10.0, patch::Bool = false)
     return loadflow(flow, xmin, xmax, ymin, ymax, nx, ny, patch)
 end
 
 # flow
-function loadflow(flow::Function; xmin::Float64 = -10.0, xmax::Float64 = 10.0, ymin::Float64 = -10.0, ymax::Float64 = 10.0, nx::Int = Int((xmax - xmin) * 100) + 1, ny::Int = Int((ymax - ymin) * 100) + 1, patch::Bool = true)
+function loadflow(flow::Function; xmin::Float64 = -10.0, xmax::Float64 = 10.0, ymin::Float64 = -10.0, ymax::Float64 = 10.0, nx::Int = Int((xmax - xmin) * 100) + 1, ny::Int = Int((ymax - ymin) * 100) + 1, patch::Bool = false)
     return loadflow(flow, xmin, xmax, ymin, ymax, nx, ny, patch)
 end
 
@@ -80,7 +80,7 @@ function loadflow(flow::Matrix, xmin::Float64, xmax::Float64, ymin::Float64, yma
     return VCFlowData.InterpolatedFlow(itp)
 end
 
-function loadflow(flow::Matrix, xmin::Float64, xmax::Float64, ymin::Float64, ymax::Float64; patch::Bool = true)
+function loadflow(flow::Matrix, xmin::Float64, xmax::Float64, ymin::Float64, ymax::Float64; patch::Bool = false)
     return loadflow(flow, xmin, xmax, ymin, ymax, patch)
 end
 
@@ -116,7 +116,7 @@ function loadflow(file::String, patch::Bool)
     end
 end
 
-function loadflow(file::String; patch::Bool=true)
+function loadflow(file::String; patch::Bool=false)
     return loadflow(file, patch)
 end
 
