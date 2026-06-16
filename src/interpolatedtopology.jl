@@ -4,10 +4,14 @@ using VCFlowData
 using CairoMakie
 using RK43
 
-
 # Evaluate a stationary 2D VCFlowData.InterpolatedFlow at x
 function _flow_value(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}) where {T}
     return flow.itp(x[1], x[2])
+end
+
+function _valid_flow_value(flow::VCFlowData.InterpolatedFlow, x::SVector{2,Float64}; zero_cell_tol=1e-10)
+    v = _flow_value(flow, x)
+    return norm(v) > zero_cell_tol
 end
 
 # Extract 2D spatial bounds
@@ -81,6 +85,18 @@ function jacobian(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}; h::T = sqr
     return SMatrix{2,2,T}(J)
 end
 
+function _point_segment_distance(p::SVector{2,Float64}, a::SVector{2,Float64}, b::SVector{2,Float64})
+    ab = b - a
+    denom = dot(ab, ab)
+
+    denom == 0 && return norm(p - a)
+
+    t = clamp(dot(p - a, ab) / denom, 0.0, 1.0)
+    q = a + t * ab
+
+    return norm(p - q)
+end
+
 """
     critical_points(flow; tol=1e-8)
 
@@ -95,12 +111,54 @@ This approach guarantees that critical points inside a cell are found even if
 they are not located near the cell center and therefore avoids the sampling
 artifacts of coarse-grid candidate searches.
 """
-function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8)
+function critical_points(flow::VCFlowData.InterpolatedFlow;
+    tol=1e-8,
+    zero_cell_tol=1e-12,
+    duplicate_tol=1e-4,
+    ignore_masked_cells::Bool=true,
+    ignore_boundary_points::Bool=true,
+    min_mask_boundary_distance_cells::Real=0,
+)
     itp = flow.itp
     xmin, ymin, xmax, ymax = _spatial_bounds(flow)
 
     xs = collect(range(xmin, xmax; length=length(axes(itp, 1))))
     ys = collect(range(ymin, ymax; length=length(axes(itp, 2))))
+
+    hx_min = minimum(diff(xs))
+    hy_min = minimum(diff(ys))
+    domain_scale = max(
+        abs(Float64(xmin)),
+        abs(Float64(xmax)),
+        abs(Float64(ymin)),
+        abs(Float64(ymax)),
+        1.0
+    )
+
+    boundary_tol = max(10 * tol, 100 * eps(Float64) * domain_scale)
+
+    mask_boundary_filter_tol =
+    min_mask_boundary_distance_cells * max(hx_min, hy_min)
+
+    mask_segs_for_filter =
+        ignore_masked_cells && min_mask_boundary_distance_cells > 0 ?
+        mask_boundary_segments(flow; zero_cell_tol=zero_cell_tol) :
+        BoundarySegment{Float64,2}[]
+
+    function distance_to_mask_boundary(p)
+        dmin = Inf
+
+        for seg in mask_segs_for_filter
+            d = _point_segment_distance(p, seg.p0, seg.p1)
+            dmin = min(dmin, d)
+        end
+
+        return dmin
+    end
+
+    function is_masked(v)
+        return norm(v) < zero_cell_tol
+    end
 
     candidates = Tuple{SVector{2,Float64}, SMatrix{2,2,Float64,4}}[]
 
@@ -114,7 +172,6 @@ function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8)
         end
 
         Δ = b^2 - 4a*c
-
         Δ < -qtol && return roots
         Δ = max(Δ, 0.0)
 
@@ -124,7 +181,7 @@ function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8)
         return roots
     end
 
-    function try_add_root!(ξ, η, x0, x1, y0, y1, a, b; local_tol=1e-9)
+        function try_add_root!(ξ, η, x0, x1, y0, y1, a, b, v00, v10, v01, v11; local_tol=1e-9)
         if -local_tol <= ξ <= 1 + local_tol &&
            -local_tol <= η <= 1 + local_tol
 
@@ -140,6 +197,19 @@ function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8)
             y = y0 + η * (y1 - y0)
             p = SVector{2,Float64}(x, y)
 
+            if ignore_masked_cells && min_mask_boundary_distance_cells > 0
+                distance_to_mask_boundary(p) < mask_boundary_filter_tol && return
+            end
+
+            if ignore_boundary_points
+                if p[1] <= xmin + boundary_tol ||
+                   p[1] >= xmax - boundary_tol ||
+                   p[2] <= ymin + boundary_tol ||
+                   p[2] >= ymax - boundary_tol
+                    return
+                end
+            end
+
             hx = x1 - x0
             hy = y1 - y0
 
@@ -153,7 +223,7 @@ function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8)
                 dv_dξ / hx  dv_dη / hy
             ]
 
-            duplicate = any(c -> norm(c[1] - p) < 1e-6, candidates)
+            duplicate = any(c -> norm(c[1] - p) < duplicate_tol, candidates)
             duplicate || push!(candidates, (p, J))
         end
     end
@@ -166,6 +236,11 @@ function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8)
         v10 = itp(x1, y0)
         v01 = itp(x0, y1)
         v11 = itp(x1, y1)
+
+        if ignore_masked_cells
+            nzero = count(v -> is_masked(v), (v00, v10, v01, v11))
+            nzero >= 3 && continue
+        end
 
         # u(ξ,η) = a1 + a2*ξ + a3*η + a4*ξ*η
         a = (
@@ -194,11 +269,10 @@ function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8)
             abs(denom) < 1e-12 && continue
 
             η = -(a[1] + a[2]*ξ) / denom
-            try_add_root!(ξ, η, x0, x1, y0, y1, a, b)
+            try_add_root!(ξ, η, x0, x1, y0, y1, a, b, v00, v10, v01, v11)
         end
 
         # Fallback: eliminate ξ instead.
-        # Needed when a3 + a4*ξ is close to zero.
         r2 = b[3]*a[4] - b[4]*a[3]
         r1 = b[1]*a[4] + b[3]*a[2] - b[2]*a[3] - b[4]*a[1]
         r0 = b[1]*a[2] - b[2]*a[1]
@@ -208,14 +282,14 @@ function critical_points(flow::VCFlowData.InterpolatedFlow; tol=1e-8)
             abs(denom) < 1e-12 && continue
 
             ξ = -(a[1] + a[3]*η) / denom
-            try_add_root!(ξ, η, x0, x1, y0, y1, a, b)
+            try_add_root!(ξ, η, x0, x1, y0, y1, a, b, v00, v10, v01, v11)
         end
     end
 
     cps = CriticalPoint{Float64,2}[]
 
     for (x, J) in candidates
-        duplicate = any(cp -> norm(cp.x - x) < 1e-5, cps)
+        duplicate = any(cp -> norm(cp.x - x) < duplicate_tol, cps)
         duplicate && continue
 
         λ = eigvals(Matrix(J))
@@ -281,18 +355,155 @@ function boundary_segments(flow::VCFlowData.InterpolatedFlow)
     return segs
 end
 
+function _is_masked_value(v; zero_cell_tol=1e-10)
+    return norm(v) < zero_cell_tol
+end
+
+
+function mask_boundary_segments(flow::VCFlowData.InterpolatedFlow; zero_cell_tol=1e-10)
+    itp = flow.itp
+    xmin, ymin, xmax, ymax = _spatial_bounds(flow)
+
+    nx = length(axes(itp, 1))
+    ny = length(axes(itp, 2))
+
+    xs = collect(range(Float64(xmin), Float64(xmax); length=nx))
+    ys = collect(range(Float64(ymin), Float64(ymax); length=ny))
+
+    segs = BoundarySegment{Float64,2}[]
+
+    for i in 1:(nx - 1), j in 1:(ny - 1)
+        x0 = xs[i]
+        x1 = xs[i + 1]
+        y0 = ys[j]
+        y1 = ys[j + 1]
+
+        xm = 0.5 * (x0 + x1)
+        ym = 0.5 * (y0 + y1)
+
+        # vertikale Interface-Prüfung: links <-> rechts
+        p_left  = SVector{2,Float64}(x0, ym)
+        p_right = SVector{2,Float64}(x1, ym)
+
+        v_left  = _flow_value(flow, p_left)
+        v_right = _flow_value(flow, p_right)
+
+        m_left  = _is_masked_value(v_left; zero_cell_tol=zero_cell_tol)
+        m_right = _is_masked_value(v_right; zero_cell_tol=zero_cell_tol)
+
+        if m_left != m_right
+            p0 = SVector{2,Float64}(xm, y0)
+            p1 = SVector{2,Float64}(xm, y1)
+
+            # Normal zeigt von Maske in Richtung Fluid
+            normal = m_left ?
+                SVector{2,Float64}(1.0, 0.0) :
+                SVector{2,Float64}(-1.0, 0.0)
+
+            push!(segs, BoundarySegment(p0, p1, normal))
+        end
+
+        # horizontale Interface-Prüfung: unten <-> oben
+        p_bottom = SVector{2,Float64}(xm, y0)
+        p_top    = SVector{2,Float64}(xm, y1)
+
+        v_bottom = _flow_value(flow, p_bottom)
+        v_top    = _flow_value(flow, p_top)
+
+        m_bottom = _is_masked_value(v_bottom; zero_cell_tol=zero_cell_tol)
+        m_top    = _is_masked_value(v_top; zero_cell_tol=zero_cell_tol)
+
+        if m_bottom != m_top
+            p0 = SVector{2,Float64}(x0, ym)
+            p1 = SVector{2,Float64}(x1, ym)
+
+            # Normal zeigt von Maske in Richtung Fluid
+            normal = m_bottom ?
+                SVector{2,Float64}(0.0, 1.0) :
+                SVector{2,Float64}(0.0, -1.0)
+
+            push!(segs, BoundarySegment(p0, p1, normal))
+        end
+    end
+
+    return segs
+end
+
+
+function add_switch_points_from_samples!(pts, xs, svals, normal, tangent; tol=1e-10)
+    n = length(xs)
+    n < 2 && return
+
+    signs = map(s -> s > tol ? 1 : s < -tol ? -1 : 0, svals)
+
+    i = 1
+    while i < n
+        # echter Vorzeichenwechsel zwischen zwei nicht-null Samples
+        if signs[i] != 0 && signs[i + 1] != 0
+            if signs[i] != signs[i + 1]
+                s0 = svals[i]
+                s1 = svals[i + 1]
+
+                α = clamp(s0 / (s0 - s1), 0.0, 1.0)
+                xsw = (1 - α) * xs[i] + α * xs[i + 1]
+
+                push!(pts, BoundarySwitchPoint(xsw, normal, tangent))
+            end
+
+            i += 1
+            continue
+        end
+
+        # zusammenhängende near-zero-Zone behandeln
+        if signs[i] == 0
+            run_start = i
+
+            while i <= n && signs[i] == 0
+                i += 1
+            end
+
+            run_end = i - 1
+
+            left_sign = run_start > 1 ? signs[run_start - 1] : 0
+            right_sign = i <= n ? signs[i] : 0
+
+            # near-zero-Zone nur behalten, wenn links/rechts echte unterschiedliche Vorzeichen stehen
+            if left_sign != 0 && right_sign != 0 && left_sign != right_sign
+                mid = div(run_start + run_end, 2)
+                push!(pts, BoundarySwitchPoint(xs[mid], normal, tangent))
+            end
+
+            continue
+        end
+
+        # signs[i] != 0 und signs[i+1] == 0
+        i += 1
+    end
+end
+
 """
     boundary_switch_points(flow; m=400, tol=1e-10)
 
 Find boundary switch points by detecting sign changes of v·n along each edge.
 """
-function boundary_switch_points(flow::VCFlowData.InterpolatedFlow; tol=1e-10, patch::Bool=false)
-    itp = flow.itp
-    xsamples = length(axes(itp, 1))
-    ysamples = length(axes(itp, 2))
-
+function boundary_switch_points(
+    flow::VCFlowData.InterpolatedFlow;
+    tol=1e-10,
+    patch::Bool=false,
+    xsamples::Int=450,
+    ysamples::Int=150,
+    include_mask_boundary::Bool=true,
+    zero_cell_tol=1e-10,
+    duplicate_tol=1e-4,
+    mask_sample_offset_cells::Real=0.25
+)
     xmin, ymin, xmax, ymax = _spatial_bounds(flow)
+
     T = Float64
+
+    pts = BoundarySwitchPoint{Float64,2}[]
+
+    # Äußere rechteckige Boundary
 
     if !patch
         edges = (
@@ -302,105 +513,114 @@ function boundary_switch_points(flow::VCFlowData.InterpolatedFlow; tol=1e-10, pa
             (_linspace(xmin, xmax, xsamples), x -> SVector{2,T}(x, ymax), SVector{2,T}( 0, 1)), # top
         )
 
-    pts = BoundarySwitchPoint{Float64,2}[]
+        for (params, mkpt, normal) in edges
+            tangent = SVector{2,T}(-normal[2], normal[1])
 
-    for (params, mkpt, normal) in edges
-        tangent = SVector{2,T}(-normal[2], normal[1])
+            xs = [mkpt(p) for p in params]
+            svals = [dot(_flow_value(flow, x), normal) for x in xs]
 
-        xs = [mkpt(p) for p in params]
-        svals = [dot(_flow_value(flow, x), normal) for x in xs]
-
-            for i in 1:(length(xs)-1)
-                x0 = xs[i]
-                x1 = xs[i+1]
-
-                s0 = svals[i]
-                s1 = svals[i+1]
-
-                if abs(s0) < tol
-                    push!(pts, BoundarySwitchPoint(x0, normal, tangent))
-                    continue
-                end
-
-                if abs(s1) < tol
-                    push!(pts, BoundarySwitchPoint(x1, normal, tangent))
-                    continue
-                end
-
-                sign(s0) == sign(s1) && continue
-
-                α = clamp(s0 / (s0 - s1), 0.0, 1.0)
-                xsw = (1 - α) * x0 + α * x1
-
-                push!(pts, BoundarySwitchPoint(xsw, normal, tangent))
-            end
+            add_switch_points_from_samples!(pts, xs, svals, normal, tangent; tol=tol)
         end
     else
-        # Patch case:
-        # The outer top/bottom layers have modified normal components.
-        # Therefore use the first inner sample line and project the flow
-        # onto the boundary tangent.
+        side_edges = (
+            (_linspace(ymin, ymax, ysamples), y -> SVector{2,T}(xmin, y), SVector{2,T}(-1, 0)), # left
+            (_linspace(ymin, ymax, ysamples), y -> SVector{2,T}(xmax, y), SVector{2,T}( 1, 0)), # right
+        )
+
+        for (params, mkpt, normal) in side_edges
+            tangent = SVector{2,T}(-normal[2], normal[1])
+
+            xs = [mkpt(p) for p in params]
+            svals = [dot(_flow_value(flow, x), normal) for x in xs]
+
+            add_switch_points_from_samples!(pts, xs, svals, normal, tangent; tol=tol)
+        end
+
+        # top/bottom gepatcht über innere Sample-Linie und Tangentialkomponente
         xparams = _linspace(xmin, xmax, xsamples)
         yparams = _linspace(ymin, ymax, ysamples)
 
-        y_bottom_inner = yparams[2]
-        y_top_inner = yparams[end - 1]
+        if length(yparams) >= 3
+            y_bottom_inner = yparams[2]
+            y_top_inner = yparams[end - 1]
 
-        edges = (
-            (
-                xparams,
-                x -> SVector{2,T}(x, y_bottom_inner), # offset sample line
-                x -> SVector{2,T}(x, ymin),           # projected boundary point
-                SVector{2,T}(0, -1)                   # bottom normal
-            ),
-            (
-                xparams,
-                x -> SVector{2,T}(x, y_top_inner),    # offset sample line
-                x -> SVector{2,T}(x, ymax),           # projected boundary point
-                SVector{2,T}(0, 1)                    # top normal
-            ),
-        )
+            patch_edges = (
+                (
+                    xparams,
+                    x -> SVector{2,T}(x, y_bottom_inner),
+                    x -> SVector{2,T}(x, ymin),
+                    SVector{2,T}(0, -1)
+                ),
+                (
+                    xparams,
+                    x -> SVector{2,T}(x, y_top_inner),
+                    x -> SVector{2,T}(x, ymax),
+                    SVector{2,T}(0, 1)
+                ),
+            )
 
-        for (params, offset_mkpt, boundary_mkpt, normal) in edges
-            tangent = _tangent_from_normal(normal)
+            for (params, offset_mkpt, boundary_mkpt, normal) in patch_edges
+                tangent = SVector{2,T}(-normal[2], normal[1])
 
-            xs_offset = [offset_mkpt(p) for p in params]
-            xs_boundary = [boundary_mkpt(p) for p in params]
+                xs_offset = [offset_mkpt(p) for p in params]
+                xs_boundary = [boundary_mkpt(p) for p in params]
 
-            # 1D vector field along the offset curve
-            svals = [dot(_flow_value(flow, x), tangent) for x in xs_offset]
+                svals = [dot(_flow_value(flow, x), tangent) for x in xs_offset]
 
-            for i in 1:(length(xs_offset)-1)
-                x0 = xs_boundary[i]
-                x1 = xs_boundary[i+1]
-
-                s0 = svals[i]
-                s1 = svals[i+1]
-
-                if abs(s0) < tol
-                    push!(pts, BoundarySwitchPoint(x0, normal, tangent))
-                    continue
-                end
-
-                if abs(s1) < tol
-                    push!(pts, BoundarySwitchPoint(x1, normal, tangent))
-                    continue
-                end
-
-                sign(s0) == sign(s1) && continue
-
-                α = clamp(s0 / (s0 - s1), 0.0, 1.0)
-                xsw = (1 - α) * x0 + α * x1
-
-                push!(pts, BoundarySwitchPoint(xsw, normal, tangent))
+                add_switch_points_from_samples!(pts, xs_boundary, svals, normal, tangent; tol=tol)
             end
         end
     end
 
+    # Innere Maskengrenzen zusätzlich auswerten
+
+    if include_mask_boundary
+        mask_segs = mask_boundary_segments(flow; zero_cell_tol=zero_cell_tol)
+
+        itp = flow.itp
+        nx = length(axes(itp, 1))
+        ny = length(axes(itp, 2))
+
+        xs_grid = collect(range(Float64(xmin), Float64(xmax); length=nx))
+        ys_grid = collect(range(Float64(ymin), Float64(ymax); length=ny))
+
+        hx = minimum(diff(xs_grid))
+        hy = minimum(diff(ys_grid))
+        h = min(hx, hy)
+
+        sample_offset = mask_sample_offset_cells * h
+
+        for seg in mask_segs
+            normal = _safe_normalize(seg.normal)
+            tangent = _safe_normalize(seg.p1 - seg.p0)
+
+            params = range(0.0, 1.0; length=5)
+
+            xs_boundary = [(1 - α) * seg.p0 + α * seg.p1 for α in params]
+
+            # leicht in das Fluid hinein samplen, nicht direkt auf der Maskengrenze
+            xs_probe = [x + sample_offset * normal for x in xs_boundary]
+
+            svals = Float64[]
+
+            for x in xs_probe
+                if _inside(flow, x)
+                    push!(svals, dot(_flow_value(flow, x), normal))
+                else
+                    push!(svals, 0.0)
+                end
+            end
+
+            add_switch_points_from_samples!(pts, xs_boundary, svals, normal, tangent; tol=tol)
+        end
+    end
+
+
+    # Deduplizieren
     out = BoundarySwitchPoint{Float64,2}[]
 
     for p in pts
-        duplicate = any(q -> norm(q.x - p.x) < 1e-4, out)
+        duplicate = any(q -> norm(q.x - p.x) < duplicate_tol, out)
         duplicate || push!(out, p)
     end
 
