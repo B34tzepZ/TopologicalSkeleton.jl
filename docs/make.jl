@@ -6,7 +6,8 @@ makedocs(
     modules = [TopologicalSkeleton],
     format = Documenter.HTML(),
     pages = [
-        "Home" => "installation.md",
+        "Installation" => "index.md",
         "Usage" => "usage.md",
+        "Functions" => "functions.md",
     ]
 )
