@@ -3,6 +3,7 @@ using LinearAlgebra
 using VCFlowData
 using CairoMakie
 using RK43
+using ForwardDiff
 
 # Evaluate a stationary 2D VCFlowData.InterpolatedFlow at x
 function _flow_value(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}) where {T}
@@ -83,6 +84,11 @@ function jacobian(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}; h::T = sqr
     end
 
     return SMatrix{2,2,T}(J)
+end
+
+function divergence(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}) where {T}
+    J = ForwardDiff.jacobian(x -> _flow_value(flow, x), x)
+    return tr(J)
 end
 
 function _point_segment_distance(p::SVector{2,Float64}, a::SVector{2,Float64}, b::SVector{2,Float64})
@@ -819,4 +825,4 @@ function integration_direction(cp::CriticalPoint)
     return :forward
 end
 
-export critical_points, critical_type, boundary_segments, boundary_switch_points, separatrix_seeds
+export critical_points, critical_type, boundary_segments, boundary_switch_points, separatrix_seeds, divergence

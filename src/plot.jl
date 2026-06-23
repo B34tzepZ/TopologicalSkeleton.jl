@@ -14,13 +14,14 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
     ignore_masked_cells=true,
     ignore_boundary_points=true,
     min_mask_boundary_distance_cells::Real=0,
-    patch_boundary=false
+    patch_boundary=false,
+    critical_point_kwargs = (;)
 )
     xmin, ymin, xmax, ymax = _spatial_bounds(flow)
 
     fig = Figure(size=(900, 700))
     ax = Axis(fig[1, 1],
-        title="Topological Skeleton",
+        title="Vector Field",
         xlabel="x",
         ylabel="y",
         aspect=DataAspect()
@@ -31,7 +32,7 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
     h_sink    = scatter!(ax, [Point2f(0,0)]; color=:blue, markersize=18, visible=false)
     h_saddle  = scatter!(ax, [Point2f(0,0)]; color=:orange, marker=:diamond, markersize=20, visible=false)
     h_center  = scatter!(ax, [Point2f(0,0)]; color=:green, markersize=18, visible=false)
-    h_sp_src  = scatter!(ax, [Point2f(0,0)]; color=:magenta, markersize=18, visible=false)
+    h_sp_source  = scatter!(ax, [Point2f(0,0)]; color=:magenta, markersize=18, visible=false)
     h_sp_sink = scatter!(ax, [Point2f(0,0)]; color=:purple, markersize=18, visible=false)
     h_bsp     = scatter!(ax, [Point2f(0,0)]; color=:lightgray, markersize=14, visible=false)
 
@@ -61,17 +62,17 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
         p = Point2f(cp.x[1], cp.x[2])
 
         if cp.kind isa Source
-            scatter!(ax, [p]; markersize=18, color=:red)
+            scatter!(ax, [p]; markersize=18, color=:red, critical_point_kwargs...)
         elseif cp.kind isa Sink
-            scatter!(ax, [p]; markersize=18, color=:blue)
+            scatter!(ax, [p]; markersize=18, color=:blue, critical_point_kwargs...)
         elseif cp.kind isa Saddle
-            scatter!(ax, [p]; markersize=20, color=:orange, marker=:diamond)
+            scatter!(ax, [p]; markersize=20, color=:orange, marker=:diamond, critical_point_kwargs...)
         elseif cp.kind isa SpiralSource
-            scatter!(ax, [p]; markersize=18, color=:magenta)
+            scatter!(ax, [p]; markersize=18, color=:magenta, critical_point_kwargs...)
         elseif cp.kind isa SpiralSink
-            scatter!(ax, [p]; markersize=18, color=:purple)
+            scatter!(ax, [p]; markersize=18, color=:purple, critical_point_kwargs...)
         else
-            scatter!(ax, [p]; markersize=18, color=:green)
+            scatter!(ax, [p]; markersize=18, color=:green, critical_point_kwargs...)
         end
     end
 
@@ -96,14 +97,14 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
 )
 
     for bsp in bsps
-        scatter!(ax, [Point2f(bsp.x[1], bsp.x[2])]; markersize=14, color=:lightgray)
+        scatter!(ax, [Point2f(bsp.x[1], bsp.x[2])]; markersize=14, color=:lightgray, critical_point_kwargs...)
     end
 
     xlims!(ax, xmin, xmax)
     ylims!(ax, ymin, ymax)
 
     Legend(fig[1, 2],
-        [h_source, h_sink, h_saddle, h_center, h_sp_src, h_sp_sink, h_bsp],
+        [h_source, h_sink, h_saddle, h_center, h_sp_source, h_sp_sink, h_bsp],
         ["Source", "Sink", "Saddle", "Center", "Spiral Source", "Spiral Sink", "Boundary Switch Point"]
     )
 
@@ -124,7 +125,9 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow;
     ignore_masked_cells=true,
     ignore_boundary_points=true,
     min_mask_boundary_distance_cells::Real=0,
-    patch_boundary=false
+    patch_boundary=false,
+    critical_point_kwargs = (;),
+    separatrix_kwargs = (;),
 )
     xmin, ymin, xmax, ymax = _spatial_bounds(flow)
 
@@ -140,9 +143,9 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow;
     h_sink   = scatter!(ax, [Point2f(0,0)]; color=:blue, markersize=18, visible=false)
     h_saddle = scatter!(ax, [Point2f(0,0)]; color=:yellow, marker=:circle, markersize=20, visible=false)
     h_center = scatter!(ax, [Point2f(0,0)]; color=:green, markersize=18, visible=false)
-    h_bsp    = scatter!(ax, [Point2f(0,0)]; color=:lightgray, markersize=14, visible=false)
-    h_sp_src = scatter!(ax, [Point2f(0,0)]; color=:magenta, markersize=18, visible=false)
+    h_sp_source = scatter!(ax, [Point2f(0,0)]; color=:magenta, markersize=18, visible=false)
     h_sp_sink = scatter!(ax, [Point2f(0,0)]; color=:purple, markersize=18, visible=false)
+    h_bsp    = scatter!(ax, [Point2f(0,0)]; color=:lightgray, markersize=14, visible=false)
 
 
     cps = critical_points(flow;
@@ -202,7 +205,7 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow;
             println("BSP seed=", x0, " dir=", dir, " points=", length(pts))
 
             if length(pts) >= 2
-                lines!(ax, first.(pts), last.(pts); color=:black, linewidth=2)
+                lines!(ax, first.(pts), last.(pts); color=:black, linewidth=2, separatrix_kwargs...)
             end
         end
     end
@@ -219,17 +222,17 @@ println("Boundary switch points: ", length(bsps))
         p = Point2f(cp.x[1], cp.x[2])
 
         if cp.kind isa Source
-            scatter!(ax, [p]; markersize=18, color=:red)
+            scatter!(ax, [p]; markersize=18, color=:red, critical_point_kwargs...)
         elseif cp.kind isa Sink
-            scatter!(ax, [p]; markersize=18, color=:blue)
+            scatter!(ax, [p]; markersize=18, color=:blue, critical_point_kwargs...)
         elseif cp.kind isa Saddle
-            scatter!(ax, [p]; markersize=20, color=:yellow)
+            scatter!(ax, [p]; markersize=20, color=:yellow, critical_point_kwargs...)
         elseif cp.kind isa SpiralSource
-            scatter!(ax, [p]; markersize=18, color=:magenta)
+            scatter!(ax, [p]; markersize=18, color=:magenta, critical_point_kwargs...)
         elseif cp.kind isa SpiralSink
-            scatter!(ax, [p]; markersize=18, color=:purple)
+            scatter!(ax, [p]; markersize=18, color=:purple, critical_point_kwargs...)
         else
-            scatter!(ax, [p]; markersize=18, color=:green)
+            scatter!(ax, [p]; markersize=18, color=:green, critical_point_kwargs...)
         end
     end
 
@@ -237,7 +240,8 @@ println("Boundary switch points: ", length(bsps))
     for bsp in bsps
         scatter!(ax, [Point2f(bsp.x[1], bsp.x[2])];
             markersize=14,
-            color=:lightgray
+            color=:lightgray,
+            critical_point_kwargs...
         )
     end
 
@@ -250,7 +254,7 @@ println("Boundary switch points: ", length(bsps))
             h_sink,
             h_saddle,
             h_center,
-            h_sp_src,
+            h_sp_source,
             h_sp_sink,
             h_bsp
         ],
