@@ -6,28 +6,23 @@ using RK43
 using ForwardDiff
 
 # Evaluate a stationary 2D VCFlowData.InterpolatedFlow at x
-function _flow_value(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}) where {T}
+function _flowvalue(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}) where {T}
     return flow.itp(x[1], x[2])
 end
 
-function _valid_flow_value(flow::VCFlowData.InterpolatedFlow, x::SVector{2,Float64}; zero_cell_tol=1e-10)
-    v = _flow_value(flow, x)
-    return norm(v) > zero_cell_tol
-end
-
 # Extract 2D spatial bounds
-function _spatial_bounds(flow::VCFlowData.InterpolatedFlow)
+function _spatialbounds(flow::VCFlowData.InterpolatedFlow)
     xmin, ymin = flow.lo
     xmax, ymax = flow.hi
     return xmin, ymin, xmax, ymax
 end
 
 function _inside(flow::VCFlowData.InterpolatedFlow, x::SVector{2})
-    xmin, ymin, xmax, ymax = _spatial_bounds(flow)
+    xmin, ymin, xmax, ymax = _spatialbounds(flow)
     return xmin <= x[1] <= xmax && ymin <= x[2] <= ymax
 end
 
-function _safe_normalize(v::SVector{2,T}) where {T}
+function _safenormalize(v::SVector{2,T}) where {T}
     n = norm(v)
     return n == 0 ? v : v / n
 end
@@ -35,7 +30,7 @@ end
 _linspace(a::T, b::T, n::Int) where {T} =
     n == 1 ? T[a] : collect(range(a, b; length=n))
 
-function _classify_eigenvalues(λ; tol=1e-10)
+function _classifyeigenvalues(λ; tol=1e-10)
     re = real.(λ)
     im = imag.(λ)
 
@@ -65,33 +60,12 @@ function _classify_eigenvalues(λ; tol=1e-10)
     end
 end
 
-"""
-    jacobian(flow, x)
-
-Jacobian matrix of the vector field at x.
-"""
-function jacobian(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}; h::T = sqrt(eps(T))) where {T}
-    J = zeros(T, 2, 2)
-
-    for i in 1:2
-        dx = ntuple(j -> j == i ? h : zero(T), 2)
-        δ = SVector{2,T}(dx)
-
-        fp = _flow_value(flow, x + δ)
-        fm = _flow_value(flow, x - δ)
-
-        J[:, i] = (fp - fm) / (2h)
-    end
-
-    return SMatrix{2,2,T}(J)
-end
-
 function divergence(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}) where {T}
-    J = ForwardDiff.jacobian(x -> _flow_value(flow, x), x)
+    J = ForwardDiff.jacobian(x -> _flowvalue(flow, x), x)
     return tr(J)
 end
 
-function _point_segment_distance(p::SVector{2,Float64}, a::SVector{2,Float64}, b::SVector{2,Float64})
+function _pointsegmentdistance(p::SVector{2,Float64}, a::SVector{2,Float64}, b::SVector{2,Float64})
     ab = b - a
     denom = dot(ab, ab)
 
@@ -104,7 +78,7 @@ function _point_segment_distance(p::SVector{2,Float64}, a::SVector{2,Float64}, b
 end
 
 """
-    critical_points(flow; tol=1e-8)
+    criticalpoints(flow; tol=1e-8)
 
 Find critical points of a 2D bilinearly interpolated vector field by:
 
@@ -112,12 +86,8 @@ Find critical points of a 2D bilinearly interpolated vector field by:
 2. solving the resulting bilinear system analytically,
 3. locating all interior zeros of the vector field,
 4. classifying them using the eigenvalues of the local Jacobian.
-
-This approach guarantees that critical points inside a cell are found even if
-they are not located near the cell center and therefore avoids the sampling
-artifacts of coarse-grid candidate searches.
 """
-function critical_points(flow::VCFlowData.InterpolatedFlow;
+function criticalpoints(flow::VCFlowData.InterpolatedFlow;
     tol=1e-8,
     zero_cell_tol=1e-12,
     duplicate_tol=1e-4,
@@ -126,7 +96,7 @@ function critical_points(flow::VCFlowData.InterpolatedFlow;
     min_mask_boundary_distance_cells::Real=0,
 )
     itp = flow.itp
-    xmin, ymin, xmax, ymax = _spatial_bounds(flow)
+    xmin, ymin, xmax, ymax = _spatialbounds(flow)
 
     xs = collect(range(xmin, xmax; length=length(axes(itp, 1))))
     ys = collect(range(ymin, ymax; length=length(axes(itp, 2))))
@@ -148,27 +118,27 @@ function critical_points(flow::VCFlowData.InterpolatedFlow;
 
     mask_segs_for_filter =
         ignore_masked_cells && min_mask_boundary_distance_cells > 0 ?
-        mask_boundary_segments(flow; zero_cell_tol=zero_cell_tol) :
+        maskboundarysegments(flow; zero_cell_tol=zero_cell_tol) :
         BoundarySegment{Float64,2}[]
 
-    function distance_to_mask_boundary(p)
+    function distancetomaskboundary(p)
         dmin = Inf
 
         for seg in mask_segs_for_filter
-            d = _point_segment_distance(p, seg.p0, seg.p1)
+            d = _pointsegmentdistance(p, seg.p0, seg.p1)
             dmin = min(dmin, d)
         end
 
         return dmin
     end
 
-    function is_masked(v)
+    function ismasked(v)
         return norm(v) < zero_cell_tol
     end
 
     candidates = Tuple{SVector{2,Float64}, SMatrix{2,2,Float64,4}}[]
 
-    function quadratic_roots(a, b, c; qtol=1e-12)
+    function quadraticroots(a, b, c; qtol=1e-12)
         roots = Float64[]
 
         if abs(a) < qtol
@@ -187,7 +157,7 @@ function critical_points(flow::VCFlowData.InterpolatedFlow;
         return roots
     end
 
-        function try_add_root!(ξ, η, x0, x1, y0, y1, a, b, v00, v10, v01, v11; local_tol=1e-9)
+    function tryaddroot!(ξ, η, x0, x1, y0, y1, a, b, v00, v10, v01, v11; local_tol=1e-9)
         if -local_tol <= ξ <= 1 + local_tol &&
            -local_tol <= η <= 1 + local_tol
 
@@ -204,7 +174,7 @@ function critical_points(flow::VCFlowData.InterpolatedFlow;
             p = SVector{2,Float64}(x, y)
 
             if ignore_masked_cells && min_mask_boundary_distance_cells > 0
-                distance_to_mask_boundary(p) < mask_boundary_filter_tol && return
+                distancetomaskboundary(p) < mask_boundary_filter_tol && return
             end
 
             if ignore_boundary_points
@@ -243,52 +213,59 @@ function critical_points(flow::VCFlowData.InterpolatedFlow;
         v01 = itp(x0, y1)
         v11 = itp(x1, y1)
 
-        if ignore_masked_cells
-            nzero = count(v -> is_masked(v), (v00, v10, v01, v11))
-            nzero >= 3 && continue
-        end
+        us = (v00[1], v10[1], v01[1], v11[1])
+        vs = (v00[2], v10[2], v01[2], v11[2])
 
-        # u(ξ,η) = a1 + a2*ξ + a3*η + a4*ξ*η
-        a = (
-            v00[1],
-            v10[1] - v00[1],
-            v01[1] - v00[1],
-            v11[1] - v10[1] - v01[1] + v00[1]
-        )
+        if (minimum(us) <= 0 <= maximum(us)) &&
+           (minimum(vs) <= 0 <= maximum(vs))
 
-        # v(ξ,η) = b1 + b2*ξ + b3*η + b4*ξ*η
-        b = (
-            v00[2],
-            v10[2] - v00[2],
-            v01[2] - v00[2],
-            v11[2] - v10[2] - v01[2] + v00[2]
-        )
+            if ignore_masked_cells
+                nzero = count(v -> ismasked(v), (v00, v10, v01, v11))
+                nzero >= 3 && continue
+            end
 
-        # Eliminate η:
-        # η = -(a1 + a2*ξ) / (a3 + a4*ξ)
-        q2 = b[2]*a[4] - b[4]*a[2]
-        q1 = b[1]*a[4] + b[2]*a[3] - b[3]*a[2] - b[4]*a[1]
-        q0 = b[1]*a[3] - b[3]*a[1]
+            # u(ξ,η) = a1 + a2*ξ + a3*η + a4*ξ*η
+            a = (
+                v00[1],
+                v10[1] - v00[1],
+                v01[1] - v00[1],
+                v11[1] - v10[1] - v01[1] + v00[1]
+            )
 
-        for ξ in quadratic_roots(q2, q1, q0)
-            denom = a[3] + a[4]*ξ
-            abs(denom) < 1e-12 && continue
+            # v(ξ,η) = b1 + b2*ξ + b3*η + b4*ξ*η
+            b = (
+                v00[2],
+                v10[2] - v00[2],
+                v01[2] - v00[2],
+                v11[2] - v10[2] - v01[2] + v00[2]
+            )
 
-            η = -(a[1] + a[2]*ξ) / denom
-            try_add_root!(ξ, η, x0, x1, y0, y1, a, b, v00, v10, v01, v11)
-        end
+            # Eliminate η:
+            # η = -(a1 + a2*ξ) / (a3 + a4*ξ)
+            q2 = b[2]*a[4] - b[4]*a[2]
+            q1 = b[1]*a[4] + b[2]*a[3] - b[3]*a[2] - b[4]*a[1]
+            q0 = b[1]*a[3] - b[3]*a[1]
 
-        # Fallback: eliminate ξ instead.
-        r2 = b[3]*a[4] - b[4]*a[3]
-        r1 = b[1]*a[4] + b[3]*a[2] - b[2]*a[3] - b[4]*a[1]
-        r0 = b[1]*a[2] - b[2]*a[1]
+            for ξ in quadraticroots(q2, q1, q0)
+                denom = a[3] + a[4]*ξ
+                abs(denom) < 1e-12 && continue
 
-        for η in quadratic_roots(r2, r1, r0)
-            denom = a[2] + a[4]*η
-            abs(denom) < 1e-12 && continue
+                η = -(a[1] + a[2]*ξ) / denom
+                tryaddroot!(ξ, η, x0, x1, y0, y1, a, b, v00, v10, v01, v11)
+            end
 
-            ξ = -(a[1] + a[3]*η) / denom
-            try_add_root!(ξ, η, x0, x1, y0, y1, a, b, v00, v10, v01, v11)
+            # Fallback: eliminate ξ instead.
+            r2 = b[3]*a[4] - b[4]*a[3]
+            r1 = b[1]*a[4] + b[3]*a[2] - b[2]*a[3] - b[4]*a[1]
+            r0 = b[1]*a[2] - b[2]*a[1]
+
+            for η in quadraticroots(r2, r1, r0)
+                denom = a[2] + a[4]*η
+                abs(denom) < 1e-12 && continue
+
+                ξ = -(a[1] + a[3]*η) / denom
+                tryaddroot!(ξ, η, x0, x1, y0, y1, a, b, v00, v10, v01, v11)
+            end
         end
     end
 
@@ -299,7 +276,7 @@ function critical_points(flow::VCFlowData.InterpolatedFlow;
         duplicate && continue
 
         λ = eigvals(Matrix(J))
-        kind = _classify_eigenvalues(λ)
+        kind = _classifyeigenvalues(λ)
 
         push!(cps, CriticalPoint(x, kind))
     end
@@ -307,16 +284,16 @@ function critical_points(flow::VCFlowData.InterpolatedFlow;
     return cps
 end
 
-critical_type(cp::CriticalPoint) = cp.kind
+criticaltype(cp::CriticalPoint) = cp.kind
 
 """
-    boundary_behavior(flow, t, x, normal)
+    boundarybehavior(flow, t, x, normal)
 
 Classify the boundary behavior at x using the outward normal.
 Returns :inflow, :outflow, or :tangent.
 """
-function boundary_behavior(flow::VCFlowData.InterpolatedFlow, x, normal; tol=1e-10)
-    v = _flow_value(flow, x)
+function boundarybehavior(flow::VCFlowData.InterpolatedFlow, x, normal; tol=1e-10)
+    v = _flowvalue(flow, x)
     s = dot(v, normal)
 
     s < -tol && return :inflow
@@ -325,15 +302,15 @@ function boundary_behavior(flow::VCFlowData.InterpolatedFlow, x, normal; tol=1e-
 end
 
 """
-    boundary_segments(flow; m=200)
+    boundarysegments(flow; m=200)
 
 Split the rectangular boundary into segments of uniform boundary behavior.
 """
-function boundary_segments(flow::VCFlowData.InterpolatedFlow)
+function boundarysegments(flow::VCFlowData.InterpolatedFlow)
     itp = flow.itp
     xsamples = length(axes(itp, 1))
     ysamples = length(axes(itp, 2))
-    xmin, ymin, xmax, ymax = _spatial_bounds(flow)
+    xmin, ymin, xmax, ymax = _spatialbounds(flow)
     T = Float64
 
     edges = (
@@ -347,7 +324,7 @@ function boundary_segments(flow::VCFlowData.InterpolatedFlow)
 
     for (params, mkpt, normal) in edges
         pts = [mkpt(p) for p in params]
-        labels = [boundary_behavior(flow, p, normal) for p in pts]
+        labels = [boundarybehavior(flow, p, normal) for p in pts]
 
         run_start = 1
         for i in 2:(length(labels)+1)
@@ -361,14 +338,14 @@ function boundary_segments(flow::VCFlowData.InterpolatedFlow)
     return segs
 end
 
-function _is_masked_value(v; zero_cell_tol=1e-10)
+function _ismaskedvalue(v; zero_cell_tol=1e-10)
     return norm(v) < zero_cell_tol
 end
 
 
-function mask_boundary_segments(flow::VCFlowData.InterpolatedFlow; zero_cell_tol=1e-10)
+function maskboundarysegments(flow::VCFlowData.InterpolatedFlow; zero_cell_tol=1e-10)
     itp = flow.itp
-    xmin, ymin, xmax, ymax = _spatial_bounds(flow)
+    xmin, ymin, xmax, ymax = _spatialbounds(flow)
 
     nx = length(axes(itp, 1))
     ny = length(axes(itp, 2))
@@ -391,11 +368,11 @@ function mask_boundary_segments(flow::VCFlowData.InterpolatedFlow; zero_cell_tol
         p_left  = SVector{2,Float64}(x0, ym)
         p_right = SVector{2,Float64}(x1, ym)
 
-        v_left  = _flow_value(flow, p_left)
-        v_right = _flow_value(flow, p_right)
+        v_left  = _flowvalue(flow, p_left)
+        v_right = _flowvalue(flow, p_right)
 
-        m_left  = _is_masked_value(v_left; zero_cell_tol=zero_cell_tol)
-        m_right = _is_masked_value(v_right; zero_cell_tol=zero_cell_tol)
+        m_left  = _ismaskedvalue(v_left; zero_cell_tol=zero_cell_tol)
+        m_right = _ismaskedvalue(v_right; zero_cell_tol=zero_cell_tol)
 
         if m_left != m_right
             p0 = SVector{2,Float64}(xm, y0)
@@ -413,11 +390,11 @@ function mask_boundary_segments(flow::VCFlowData.InterpolatedFlow; zero_cell_tol
         p_bottom = SVector{2,Float64}(xm, y0)
         p_top    = SVector{2,Float64}(xm, y1)
 
-        v_bottom = _flow_value(flow, p_bottom)
-        v_top    = _flow_value(flow, p_top)
+        v_bottom = _flowvalue(flow, p_bottom)
+        v_top    = _flowvalue(flow, p_top)
 
-        m_bottom = _is_masked_value(v_bottom; zero_cell_tol=zero_cell_tol)
-        m_top    = _is_masked_value(v_top; zero_cell_tol=zero_cell_tol)
+        m_bottom = _ismaskedvalue(v_bottom; zero_cell_tol=zero_cell_tol)
+        m_top    = _ismaskedvalue(v_top; zero_cell_tol=zero_cell_tol)
 
         if m_bottom != m_top
             p0 = SVector{2,Float64}(x0, ym)
@@ -436,7 +413,7 @@ function mask_boundary_segments(flow::VCFlowData.InterpolatedFlow; zero_cell_tol
 end
 
 
-function add_switch_points_from_samples!(pts, xs, svals, normal, tangent; tol=1e-10)
+function addswitchpointsfromsamples!(pts, xs, svals, normal, tangent; tol=1e-10)
     n = length(xs)
     n < 2 && return
 
@@ -488,11 +465,11 @@ function add_switch_points_from_samples!(pts, xs, svals, normal, tangent; tol=1e
 end
 
 """
-    boundary_switch_points(flow; m=400, tol=1e-10)
+    boundaryswitchpoints(flow; m=400, tol=1e-10)
 
 Find boundary switch points by detecting sign changes of v·n along each edge.
 """
-function boundary_switch_points(
+function boundaryswitchpoints(
     flow::VCFlowData.InterpolatedFlow;
     tol=1e-10,
     patch::Bool=false,
@@ -503,7 +480,7 @@ function boundary_switch_points(
     duplicate_tol=1e-4,
     mask_sample_offset_cells::Real=0.25
 )
-    xmin, ymin, xmax, ymax = _spatial_bounds(flow)
+    xmin, ymin, xmax, ymax = _spatialbounds(flow)
 
     T = Float64
 
@@ -523,9 +500,9 @@ function boundary_switch_points(
             tangent = SVector{2,T}(-normal[2], normal[1])
 
             xs = [mkpt(p) for p in params]
-            svals = [dot(_flow_value(flow, x), normal) for x in xs]
+            svals = [dot(_flowvalue(flow, x), normal) for x in xs]
 
-            add_switch_points_from_samples!(pts, xs, svals, normal, tangent; tol=tol)
+            addswitchpointsfromsamples!(pts, xs, svals, normal, tangent; tol=tol)
         end
     else
         side_edges = (
@@ -537,9 +514,9 @@ function boundary_switch_points(
             tangent = SVector{2,T}(-normal[2], normal[1])
 
             xs = [mkpt(p) for p in params]
-            svals = [dot(_flow_value(flow, x), normal) for x in xs]
+            svals = [dot(_flowvalue(flow, x), normal) for x in xs]
 
-            add_switch_points_from_samples!(pts, xs, svals, normal, tangent; tol=tol)
+            addswitchpointsfromsamples!(pts, xs, svals, normal, tangent; tol=tol)
         end
 
         # top/bottom gepatcht über innere Sample-Linie und Tangentialkomponente
@@ -571,9 +548,9 @@ function boundary_switch_points(
                 xs_offset = [offset_mkpt(p) for p in params]
                 xs_boundary = [boundary_mkpt(p) for p in params]
 
-                svals = [dot(_flow_value(flow, x), tangent) for x in xs_offset]
+                svals = [dot(_flowvalue(flow, x), tangent) for x in xs_offset]
 
-                add_switch_points_from_samples!(pts, xs_boundary, svals, normal, tangent; tol=tol)
+                addswitchpointsfromsamples!(pts, xs_boundary, svals, normal, tangent; tol=tol)
             end
         end
     end
@@ -581,7 +558,7 @@ function boundary_switch_points(
     # Innere Maskengrenzen zusätzlich auswerten
 
     if include_mask_boundary
-        mask_segs = mask_boundary_segments(flow; zero_cell_tol=zero_cell_tol)
+        mask_segs = maskboundarysegments(flow; zero_cell_tol=zero_cell_tol)
 
         itp = flow.itp
         nx = length(axes(itp, 1))
@@ -597,8 +574,8 @@ function boundary_switch_points(
         sample_offset = mask_sample_offset_cells * h
 
         for seg in mask_segs
-            normal = _safe_normalize(seg.normal)
-            tangent = _safe_normalize(seg.p1 - seg.p0)
+            normal = _safenormalize(seg.normal)
+            tangent = _safenormalize(seg.p1 - seg.p0)
 
             params = range(0.0, 1.0; length=5)
 
@@ -611,13 +588,13 @@ function boundary_switch_points(
 
             for x in xs_probe
                 if _inside(flow, x)
-                    push!(svals, dot(_flow_value(flow, x), normal))
+                    push!(svals, dot(_flowvalue(flow, x), normal))
                 else
                     push!(svals, 0.0)
                 end
             end
 
-            add_switch_points_from_samples!(pts, xs_boundary, svals, normal, tangent; tol=tol)
+            addswitchpointsfromsamples!(pts, xs_boundary, svals, normal, tangent; tol=tol)
         end
     end
 
@@ -634,17 +611,17 @@ function boundary_switch_points(
 end
 
 """
-    separatrix_seeds(flow, cp::CriticalPoint; ϵ=1e-6)
+    separatrixseeds(flow, cp::CriticalPoint; ϵ=1e-6)
 
 For saddles:
 - unstable directions -> :forward
 - stable directions   -> :backward
 """
-function separatrix_seeds(flow::VCFlowData.InterpolatedFlow, cp::CriticalPoint; ϵ=1e-6)
+function separatrixseeds(flow::VCFlowData.InterpolatedFlow, cp::CriticalPoint; ϵ=1e-6)
     cp.kind isa Saddle || return Tuple{SVector{2,Float64},Symbol}[]
 
     x0 = SVector{2,Float64}(cp.x)
-    J = jacobian(flow, x0)
+    J = ForwardDiff.jacobian(x0 -> _flowvalue(flow, x0), x0)
     F = eigen(Matrix(J))
 
     seeds = Tuple{SVector{2,Float64},Symbol}[]
@@ -652,7 +629,7 @@ function separatrix_seeds(flow::VCFlowData.InterpolatedFlow, cp::CriticalPoint; 
     for i in eachindex(F.values)
         λ = F.values[i]
         v = SVector{2,Float64}(F.vectors[:, i])
-        v = _safe_normalize(v)
+        v = _safenormalize(v)
         v == SVector(0.0, 0.0) && continue
 
         if real(λ) > 0
@@ -668,17 +645,17 @@ function separatrix_seeds(flow::VCFlowData.InterpolatedFlow, cp::CriticalPoint; 
 end
 
 """
-    separatrix_seeds(flow, seg::BoundarySegment; k=20, ϵ=1e-6)
+    separatrixseeds(flow, seg::BoundarySegment; k=20, ϵ=1e-6)
 
 Sample inflow boundary segments and move seeds slightly into the domain.
 """
-function separatrix_seeds(flow::VCFlowData.InterpolatedFlow, seg::BoundarySegment; k=20, ϵ=1e-6)
+function separatrixseeds(flow::VCFlowData.InterpolatedFlow, seg::BoundarySegment; k=20, ϵ=1e-6)
     mid = 0.5 * (seg.p0 + seg.p1)
-    beh = boundary_behavior(flow, mid, seg.normal)
+    beh = boundarybehavior(flow, mid, seg.normal)
 
     beh == :inflow || return Tuple{SVector{2,Float64},Symbol}[]
 
-    n̂ = _safe_normalize(SVector{2,Float64}(seg.normal))
+    n̂ = _safenormalize(SVector{2,Float64}(seg.normal))
     seeds = Tuple{SVector{2,Float64},Symbol}[]
 
     for s in range(0.0, 1.0; length=k)
@@ -691,18 +668,18 @@ function separatrix_seeds(flow::VCFlowData.InterpolatedFlow, seg::BoundarySegmen
 end
 
 """
-    separatrix_seeds(flow, bsp::BoundarySwitchPoint; ϵ=1e-3)
+    separatrixseeds(flow, bsp::BoundarySwitchPoint; ϵ=1e-3)
 
 Create one seed slightly inside the domain near a boundary switch point.
 From this seed, the separatrix should be traced both forward and backward.
 """
-function separatrix_seeds(
+function separatrixseeds(
     flow::VCFlowData.InterpolatedFlow,
     bsp::BoundarySwitchPoint;
     ϵ=1e-3
 )
     x0 = SVector{2,Float64}(bsp.x)
-    n̂ = _safe_normalize(SVector{2,Float64}(bsp.normal))
+    n̂ = _safenormalize(SVector{2,Float64}(bsp.normal))
 
     # move only slightly into the domain
     xin = x0 - ϵ * n̂
@@ -713,29 +690,29 @@ function separatrix_seeds(
     ]
 end
 
-integration_direction(::BoundarySegment) = :forward
+integrationdirection(::BoundarySegment) = :forward
 
 """
-    trace_separatrix(flow, x0; dir=:forward, h=0.005, maxsteps=4000,
+    traceseparatrix(flow, x0; dir=:forward, h=0.005, maxsteps=4000,
                      stop_eps=5e-3, minsteps_before_stop=10)
 
 Trace a separatrix as sampled pathline using RK43.
 """
-function trace_separatrix(flow::VCFlowData.InterpolatedFlow, x0::SVector{2,Float64};
+function traceseparatrix(flow::VCFlowData.InterpolatedFlow, x0::SVector{2,Float64};
     dir::Symbol=:forward,
     h::Float64=0.005,
     maxsteps::Int=4000,
     stop_eps::Float64=5e-3,
     minsteps_before_stop::Int=10
 )
-    cps = critical_points(flow)
-    bsps = boundary_switch_points(flow)
+    cps = criticalpoints(flow)
+    bsps = boundaryswitchpoints(flow)
 
     s = dir === :forward ? 1.0 : -1.0
 
     function dy(t, y)
         _inside(flow, y) || return RK43.OutOfDomain
-        return s * _flow_value(flow, y)
+        return s * _flowvalue(flow, y)
     end
 
     opts = RK43.options(Float64;
@@ -792,14 +769,14 @@ function trace_separatrix(flow::VCFlowData.InterpolatedFlow, x0::SVector{2,Float
 end
 
 """
-    trace_saddle_separatrix(flow, cp, x0; dir=:forward, h=0.005,
+    tracesaddleseparatrix(flow, cp, x0; dir=:forward, h=0.005,
                             maxsteps=4000, stop_eps=1e-2, minsteps_before_stop=10)
 
 Trace a separatrix starting from a saddle seed.
 
-Delegates the actual integration to `trace_separatrix`.
+Delegates the actual integration to `traceseparatrix`.
 """
-function trace_saddle_separatrix(
+function tracesaddleseparatrix(
     flow::VCFlowData.InterpolatedFlow,
     cp::CriticalPoint,
     x0::SVector{2,Float64};
@@ -809,7 +786,7 @@ function trace_saddle_separatrix(
     stop_eps::Float64=1e-2,
     minsteps_before_stop::Int=10
 )
-    return trace_separatrix(flow, x0;
+    return traceseparatrix(flow, x0;
         dir=dir,
         h=h,
         maxsteps=maxsteps,
@@ -818,11 +795,11 @@ function trace_saddle_separatrix(
     )
 end
 
-function integration_direction(cp::CriticalPoint)
+function integrationdirection(cp::CriticalPoint)
     cp.kind isa Source && return :backward
     cp.kind isa Sink   && return :forward
     cp.kind isa Saddle && return :both
     return :forward
 end
 
-export critical_points, critical_type, boundary_segments, boundary_switch_points, separatrix_seeds, divergence
+export criticalpoints, criticaltype, boundarysegments, boundaryswitchpoints, separatrixseeds, divergence

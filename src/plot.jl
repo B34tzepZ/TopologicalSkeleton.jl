@@ -1,5 +1,5 @@
 """
-    plot_topology(flow; resolution=41, m_boundary=200, seed_count=20)
+    plottopology(flow; resolution=41, m_boundary=200, seed_count=20)
 
 Visualize:
 - vector field
@@ -7,7 +7,7 @@ Visualize:
 - boundary segments
 - separatrix seeds
 """
-function plot_topology(flow::VCFlowData.InterpolatedFlow;
+function plottopology(flow::VCFlowData.InterpolatedFlow;
     resolution::Int=41,
     zero_cell_tol=1e-10,
     duplicate_tol=1e-3,
@@ -17,7 +17,7 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
     patch_boundary=false,
     critical_point_kwargs = (;)
 )
-    xmin, ymin, xmax, ymax = _spatial_bounds(flow)
+    xmin, ymin, xmax, ymax = _spatialbounds(flow)
 
     fig = Figure(size=(900, 700))
     ax = Axis(fig[1, 1],
@@ -43,14 +43,14 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
     vecs = Vec2f[]
 
     for x in xs, y in ys
-        v = _flow_value(flow, SVector{2,Float64}(x, y))
+        v = _flowvalue(flow, SVector{2,Float64}(x, y))
         push!(pts, Point2f(x, y))
         push!(vecs, Vec2f(v[1], v[2]))
     end
 
     arrows2d!(ax, pts, vecs; lengthscale=0.08, alpha=0.5)
 
-    cps = critical_points(flow;
+    cps = criticalpoints(flow;
         zero_cell_tol=zero_cell_tol,
         duplicate_tol=duplicate_tol,
         ignore_masked_cells=ignore_masked_cells,
@@ -76,11 +76,11 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
         end
     end
 
-    segs = boundary_segments(flow)
+    segs = boundarysegments(flow)
 
     for seg in segs
         mid = 0.5 * (seg.p0 + seg.p1)
-        beh = boundary_behavior(flow, mid, seg.normal)
+        beh = boundarybehavior(flow, mid, seg.normal)
 
         color =
             beh == :inflow  ? :purple :
@@ -90,7 +90,7 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
         lines!(ax, [seg.p0[1], seg.p1[1]], [seg.p0[2], seg.p1[2]]; color=color, linewidth=3)
     end
 
-    bsps = boundary_switch_points(flow;
+    bsps = boundaryswitchpoints(flow;
     patch=patch_boundary,
     include_mask_boundary=true,
     zero_cell_tol=zero_cell_tol
@@ -112,14 +112,14 @@ function plot_topology(flow::VCFlowData.InterpolatedFlow;
 end
 
 """
-    plot_skeleton(flow; m_boundary=300)
+    plotskeleton(flow; m_boundary=300)
 
 Plot the topological skeleton:
 - critical points
 - boundary switch points
 - separatrices between them
 """
-function plot_skeleton(flow::VCFlowData.InterpolatedFlow;
+function plotskeleton(flow::VCFlowData.InterpolatedFlow;
     zero_cell_tol=1e-10,
     duplicate_tol=1e-3,
     ignore_masked_cells=true,
@@ -129,7 +129,7 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow;
     critical_point_kwargs = (;),
     separatrix_kwargs = (;),
 )
-    xmin, ymin, xmax, ymax = _spatial_bounds(flow)
+    xmin, ymin, xmax, ymax = _spatialbounds(flow)
 
     fig = Figure(size=(1000, 700))
     ax = Axis(fig[1, 1],
@@ -148,7 +148,7 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow;
     h_bsp    = scatter!(ax, [Point2f(0,0)]; color=:lightgray, markersize=14, visible=false)
 
 
-    cps = critical_points(flow;
+    cps = criticalpoints(flow;
         zero_cell_tol=zero_cell_tol,
         duplicate_tol=duplicate_tol,
         ignore_masked_cells=ignore_masked_cells,
@@ -156,7 +156,7 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow;
         min_mask_boundary_distance_cells=min_mask_boundary_distance_cells
     )
 
-    bsps = boundary_switch_points(flow;
+    bsps = boundaryswitchpoints(flow;
     patch=patch_boundary,
     include_mask_boundary=true,
     zero_cell_tol=zero_cell_tol
@@ -175,8 +175,8 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow;
         if cp.kind isa Saddle
             println("Tracing saddle at ", cp.x)
 
-            for (x0, dir) in separatrix_seeds(flow, cp; ϵ=5e-3)
-                pts = trace_separatrix(flow, x0;
+            for (x0, dir) in separatrixseeds(flow, cp; ϵ=5e-3)
+                pts = traceseparatrix(flow, x0;
                     dir=dir,
                     h=0.005,
                     stop_eps=5e-3,
@@ -194,8 +194,8 @@ function plot_skeleton(flow::VCFlowData.InterpolatedFlow;
 
     # separatrices from boundary switch points
     for bsp in bsps
-        for (x0, dir) in separatrix_seeds(flow, bsp; ϵ=1e-3)
-            pts = trace_separatrix(flow, x0;
+        for (x0, dir) in separatrixseeds(flow, bsp; ϵ=1e-3)
+            pts = traceseparatrix(flow, x0;
                 dir=dir,
                 h=0.005,
                 stop_eps=5e-3,
@@ -272,4 +272,4 @@ println("Boundary switch points: ", length(bsps))
     return fig
 end
 
-export plot_topology, plot_skeleton
+export plottopology, plotskeleton

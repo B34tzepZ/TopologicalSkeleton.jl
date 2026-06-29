@@ -34,58 +34,51 @@ struct BoundarySwitchPoint{T,N} <: AbstractTopology
 end
 
 """
-    jacobian(flow, t, x)
-
-Jacobian matrix of the vector field at (t, x).
-"""
-function jacobian end
-
-"""
-    critical_points(flow)
+    criticalpoints(flow)
 
 Return all critical points of the flow.
 """
-function critical_points end
+function criticalpoints end
 
 """
-    critical_type(cp)
+    criticaltype(cp)
 
 Return type of critical point (:source, :sink, :saddle, :center, :spiral_source, :spiral_sink).
 """
-function critical_type end
+function criticaltype end
 
 """
-    separatrix_seeds(flow, feature; ϵ=1e-6)
+    separatrixseeds(flow, feature; ϵ=1e-6)
 
 Return seed points for separatrix integration.
 """
-function separatrix_seeds end
+function separatrixseeds end
 
 """
-    boundary_segments(flow)
+    boundarysegments(flow)
 
 Return geometric boundary segments of the spatial domain.
 """
-function boundary_segments end
+function boundarysegments end
 
 """
-    boundary_switch_points(flow)
+    boundaryswitchpoints(flow)
 
 Return boundary switch points, i.e. points on the boundary where the
 normal component changes sign.
 """
-function boundary_switch_points end
+function boundaryswitchpoints end
 
 """
-    boundary_behavior(flow, t, x, normal)
+    boundarybehavior(flow, t, x, normal)
 
 Classify boundary behavior (:inflow, :outflow, :tangent).
 """
-function boundary_behavior end
+function boundarybehavior end
 
 """
-    integration_direction(feature)
+    integrationdirection(feature)
 
 Return :forward or :backward integration direction.
 """
-function integration_direction end
+function integrationdirection end
