@@ -9,7 +9,7 @@ flow = loadflow(formula, -2.0, 2.0, -2.0, 2.0, 401, 401)
 Load a flow from a matrix
 ```
 using StaticArrays
-matrix = [@SVector rand(Float64, 2) for i in 1:401, j in 1:401]
+matrix = [@SVector randn(Float64, 2) for i in 1:41, j in 1:41]
 flow = loadflow(matrix, -2.0, 2.0, -2.0, 2.0)
 ```
 Load a flow from NetCDF file
