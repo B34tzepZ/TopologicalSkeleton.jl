@@ -1,6 +1,6 @@
 # TopologicalSkeleton
 
-[![Build Status](https://github.com/B34tzepZ/TopologicalSkeleton.jl/actions/workflows/CI.yml/badge.svg?branch=master)](https://github.com/B34tzepZ/TopologicalSkeleton.jl/actions/workflows/CI.yml?query=branch%3Amaster) [![codecov](https://codecov.io/gh/B34tzepZ/TopologicalSkeleton.jl/graph/badge.svg)](https://codecov.io/gh/B34tzepZ/TopologicalSkeleton.jl) [![](https://img.shields.io/badge/docs-dev-blue.svg)](https://github.com/B34tzepZ/TopologicalSkeleton.jl/blob/master/docs/src/installation.md)
+[![Build Status](https://github.com/B34tzepZ/TopologicalSkeleton.jl/actions/workflows/CI.yml/badge.svg?branch=master)](https://github.com/B34tzepZ/TopologicalSkeleton.jl/actions/workflows/CI.yml?query=branch%3Amaster) [![codecov](https://codecov.io/gh/B34tzepZ/TopologicalSkeleton.jl/graph/badge.svg)](https://codecov.io/gh/B34tzepZ/TopologicalSkeleton.jl) [![](https://img.shields.io/badge/docs-dev-blue.svg)](https://github.com/B34tzepZ/TopologicalSkeleton.jl/blob/master/docs/src/index.md)
 
 - Load 2D flows from [VCDataSets](https://pages.vc.cs.ovgu.de/vcdatasets.jl/) or via Array/Formula
 - Get location and type of critical points
