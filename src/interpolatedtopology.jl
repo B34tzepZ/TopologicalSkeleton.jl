@@ -815,4 +815,79 @@ function integrationdirection(cp::CriticalPoint)
     return :forward
 end
 
-export criticalpoints, criticaltype, boundarysegments, boundaryswitchpoints, separatrixseeds, divergence
+function poincarereturn(
+    flow::VCFlowData.InterpolatedFlow,
+    p0::SVector{2,Float64},
+    t̂::SVector{2,Float64},
+    s::Float64;
+    h=0.005,
+    maxsteps=10000
+)
+
+    xstart = p0 + s*t̂
+
+    function dy(t, y)
+        _inside(flow, y) || return RK43.OutOfDomain
+        return _flowvalue(flow, y)
+    end
+
+    opts = RK43.options(Float64;
+        rtol=1e-4,
+        atol=1e-7,
+        hmax=h,
+        maxsteps=maxsteps
+    )
+
+    solver = RK43.rk43solver(SVector{2,Float64}, opts)
+
+    state = RK43.initialize!(
+        solver, dy,
+        0.0, h*maxsteps,
+        xstart
+    )
+
+    state == RK43.Failed && return nothing
+
+    prev = xstart
+    firstcross = true
+
+    for k in 1:maxsteps
+
+        state = RK43.step!(solver, dy)
+
+        if !(state == RK43.AcceptStep || state == RK43.Ok)
+            return nothing
+        end
+
+        _, xnew, _ = RK43.tentativepos(solver)
+        RK43.commit!(solver)
+
+        # signed distance zur Transversalen
+        d0 = dot(prev - p0, t̂)
+        d1 = dot(xnew - p0, t̂)
+
+        # normale der Transversalen
+        n̂ = @SVector[-t̂[2], t̂[1]]
+
+        h0 = dot(prev - p0, n̂)
+        h1 = dot(xnew - p0, n̂)
+
+        if !firstcross && h0*h1 < 0
+            a = h0/(h0-h1)
+
+            xcross = prev + a*(xnew-prev)
+
+            return dot(xcross-p0, t̂)
+        end
+
+        if firstcross && abs(h1) > 1e-3
+            firstcross = false
+        end
+
+        prev = xnew
+    end
+
+    return nothing
+end
+
+export criticalpoints, criticaltype, boundarysegments, boundaryswitchpoints, separatrixseeds, divergence, poincarereturn

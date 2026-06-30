@@ -365,3 +365,25 @@ end
     @test flow.lo == SVector(-0.5, -0.5)
     @test flow.hi == SVector(5.5, 1.5)
 end
+
+@testset "divergence" begin
+    formula(x, y) = @SVector [x^3 - x, (x - 0.5) * y]
+    flow = loadflow(formula, xmin, xmax, ymin, ymax, 401, 401, false)
+
+    randx = rand() * (xmax - xmin) + xmin
+    randy = rand() * (ymax - ymin) + ymin
+    div_val = divergence(flow, SVector(randx, randy))
+
+    # Compute expected divergence analytically
+    expected_div = 3 * randx^2 - 1 + (randx - 0.5)
+    @test abs(div_val - expected_div) < 0.01
+end
+
+@testset "poincarereturn" begin
+    formula(x, y) = @SVector [-y,x]
+    flow = loadflow(formula, -5.0, 5.0, -5.0, 5.0, 1001, 1001)
+    start = 0.5
+    firstreturn = poincarereturn(flow, SVector{2,Float64}(0.0, 0.0), SVector{2,Float64}(1.0, 0.0), start)
+    secondreturn = poincarereturn(flow, SVector{2,Float64}(0.0, 0.0), SVector{2,Float64}(1.0, 0.0), firstreturn)
+    @test abs(start - secondreturn) < 0.001
+end
