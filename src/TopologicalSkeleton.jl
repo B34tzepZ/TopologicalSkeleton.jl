@@ -3,6 +3,7 @@ module TopologicalSkeleton
     using LinearAlgebra
     using StaticArrays
     using Interpolations
+    using ForwardDiff
     using VCFlowData
     using NCDatasets
     using VCDataSets
