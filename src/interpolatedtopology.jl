@@ -60,6 +60,11 @@ function _classifyeigenvalues(λ; tol=1e-10)
     end
 end
 
+"""
+    divergence(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T})
+
+Compute the divergence of a 2D interpolated flow at point x.
+"""
 function divergence(flow::VCFlowData.InterpolatedFlow, x::SVector{2,T}) where {T}
     J = ForwardDiff.jacobian(x -> _flowvalue(flow, x), x)
     return tr(J)
@@ -342,7 +347,11 @@ function _ismaskedvalue(v; zero_cell_tol=1e-10)
     return norm(v) < zero_cell_tol
 end
 
+"""
+    maskboundarysegments(flow; zero_cell_tol=1e-10)
 
+Find boundary segments of the mask by detecting sign changes of v·n along each edge.
+"""
 function maskboundarysegments(flow::VCFlowData.InterpolatedFlow; zero_cell_tol=1e-10)
     itp = flow.itp
     xmin, ymin, xmax, ymax = _spatialbounds(flow)
@@ -412,7 +421,11 @@ function maskboundarysegments(flow::VCFlowData.InterpolatedFlow; zero_cell_tol=1
     return segs
 end
 
+"""
+    addswitchpointsfromsamples!(pts, xs, svals, normal, tangent; tol=1e-10)
 
+Add boundary switch points to `pts` by detecting sign changes in `svals` along the sampled points `xs`. The `normal` and `tangent` vectors are associated with the boundary segment. A tolerance `tol` is used to determine near-zero values.
+"""
 function addswitchpointsfromsamples!(pts, xs, svals, normal, tangent; tol=1e-10)
     n = length(xs)
     n < 2 && return

@@ -1,5 +1,7 @@
 """
-load a flow
+    loadflow(flow::Function, xmin::Float64, xmax::Float64, ymin::Float64, ymax::Float64, nx::Int, ny::Int, patch::Bool)
+
+Load a flow from a function, with specified domain and resolution. If `patch` is true, the v-components of the flow are set to zero at the top and bottom boundaries to enforce a "slip condition".
 """
 function loadflow(flow::Function, xmin::Float64, xmax::Float64, ymin::Float64, ymax::Float64, nx::Int, ny::Int, patch::Bool)
     xs = range(xmin, xmax, length=nx)
@@ -60,6 +62,11 @@ function loadflow(flow::Function, patch::Bool; xmin::Float64 = -10.0, xmax::Floa
     return loadflow(flow, xmin, xmax, ymin, ymax, nx, ny, patch)
 end
 
+"""
+    loadflow(flow::Matrix, xmin::Float64, xmax::Float64, ymin::Float64, ymax::Float64, patch::Bool)
+    
+Load a flow from a matrix, with specified domain and patch.
+"""
 function loadflow(flow::Matrix, xmin::Float64, xmax::Float64, ymin::Float64, ymax::Float64, patch::Bool)
     nx, ny = size(flow)
     xs = range(xmin, xmax, length=nx)
@@ -84,6 +91,11 @@ function loadflow(flow::Matrix, xmin::Float64, xmax::Float64, ymin::Float64, yma
     return loadflow(flow, xmin, xmax, ymin, ymax, patch)
 end
 
+"""
+    loadflow(file::String, patch::Bool)
+
+Load a flow from a NetCDF file using a string from VCDataSets, with optional patch.
+"""
 function loadflow(file::String, patch::Bool)
     NCDataset(VCDataSets.file(filename=file)) do ds
         xs = ds["xdim"][:] :: Vector{Float32}
