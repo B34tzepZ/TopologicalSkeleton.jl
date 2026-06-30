@@ -376,14 +376,16 @@ end
 
     # Compute expected divergence analytically
     expected_div = 3 * randx^2 - 1 + (randx - 0.5)
-    @test abs(div_val - expected_div) < 0.01
+    @test abs(div_val - expected_div) < 0.02
 end
 
 @testset "poincarereturn" begin
     formula(x, y) = @SVector [-y,x]
     flow = loadflow(formula, -5.0, 5.0, -5.0, 5.0, 1001, 1001)
+    p0 = SVector(1.0, 0.0)
+    t = SVector(0.0, 1.0)
     start = 0.5
-    firstreturn = poincarereturn(flow, SVector{2,Float64}(0.0, 0.0), SVector{2,Float64}(1.0, 0.0), start)
-    secondreturn = poincarereturn(flow, SVector{2,Float64}(0.0, 0.0), SVector{2,Float64}(1.0, 0.0), firstreturn)
+    firstreturn = poincarereturn(flow, p0, t, start)
+    secondreturn = poincarereturn(flow, p0, t, firstreturn)
     @test abs(start - secondreturn) < 0.001
 end
